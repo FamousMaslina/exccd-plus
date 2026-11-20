@@ -8,6 +8,10 @@ The Canon PowerShot A620 with firmware 1.00f is the primary EXCCD+ target. Other
 ports come from upstream EXCCD or this. See the [build target list](tools/filmsim/cameras.txt)
 for model IDs and firmware versions. The table reports upstream camera testing for those ports.
 
+If you'd like to test EXCCD+ on your camera, you're welcome to
+[open an issue](https://github.com/FamousMaslina/exccd-plus/issues/new) with your camera model,
+firmware version, and any test results.
+
 | Camera | Firmware | Status |
 |---|---|---|
 | PowerShot A620 | 1.00f | Primary EXCCD+ build target |
