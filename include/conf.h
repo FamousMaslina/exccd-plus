@@ -487,6 +487,9 @@ typedef struct
     int film_recipe;            // zuletzt geladenes Rezept: 0 keins, 1..4 = C1..C4
     int film_aiso;              // Auto-ISO kuerzeste Zeit: 0 aus, 1 Auto (1/f), 2.. 1/8..1/500
     int film_aiso_max;          // Auto-ISO hoechste ISO: 0=200 1=400 2=800 3=1600
+    int film_presets_only;
+    int film_quick_button;
+    int iso_quick_button;
 
 } Conf;
 

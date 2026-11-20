@@ -12,6 +12,7 @@
 #include "fileutil.h"
 #include "lang.h"
 #include "usb_remote.h"
+#include "filmsim.h"
 
 #include "modules.h"
 #include "module_def.h"
@@ -313,9 +314,9 @@ static ConfInfo osd_conf_info[] = {
 
     CONF_INFO(250, conf.usb_info_enable,                        CONF_DEF_VALUE, i:0),
 
-    CONF_INFO(260, conf.show_alt_helper,                        CONF_DEF_VALUE, i:0),
+    CONF_INFO(260, conf.show_alt_helper,                        CONF_DEF_VALUE, i:1),
     CONF_INFO(261, conf.show_alt_helper_delay,                  CONF_DEF_VALUE, i:3),
-    CONF_INFO(262, conf.enable_shortcuts,                       CONF_DEF_VALUE, i:0),
+    CONF_INFO(262, conf.enable_shortcuts,                       CONF_DEF_VALUE, i:1),
     CONF_INFO(263, conf.extra_button,                           CONF_DEF_VALUE, i:0),
 
     // Console settings
@@ -559,6 +560,9 @@ static ConfInfo conf_info[] = {
     CONF_INFO(271, conf.film_name,                              CONF_CHAR_PTR,  ptr:""),
     CONF_INFO(272, conf.film_aiso,                              CONF_DEF_VALUE, i:0),
     CONF_INFO(273, conf.film_aiso_max,                          CONF_DEF_VALUE, i:2),
+    CONF_INFO(274, conf.film_presets_only,                      CONF_DEF_VALUE, i:0),
+    CONF_INFO(275, conf.film_quick_button,                       CONF_DEF_VALUE, i:1),
+    CONF_INFO(276, conf.iso_quick_button,                        CONF_DEF_VALUE, i:2),
 
     CONF_INFO(999, conf.script_allow_lua_native_calls,          CONF_DEF_VALUE, i:0),
 
@@ -989,10 +993,9 @@ void conf_restore()
 
     // clear any "clear on restart" values
     clear_values();
-
-    // EXCCD hat kein Skriptmenue: Ein Autostart aus einer alten CHDK-Konfiguration
-    // (beim Einschalten oder ueber die Print-Taste) liesse sich nicht mehr abschalten
-    conf.script_startup = SCRIPT_AUTOSTART_NONE;
+#ifdef FILMSIM_QUICK_BUTTONS
+    filmsim_normalize_quick_buttons();
+#endif
 
     // EXCCD-Optik einmalig uebernehmen: alte Standardfarben und die
     // eingebaute Schrift ersetzen, eigene Einstellungen bleiben

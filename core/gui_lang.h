@@ -913,8 +913,23 @@
 #define LANG_EXCCD_DEV_ALL                      780
 #define LANG_EXCCD_DEV_NONE                     781
 #define LANG_EXCCD_DEV_FX_MENU                  782
+#define LANG_EXCCD_PLUS                         783
+#define LANG_EXCCD_SELECT_FILM                  784
+#define LANG_EXCCD_PHOTO_MODE_REQUIRED          785
+#define LANG_EXCCD_RAW_DEVELOP                  786
+#define LANG_EXCCD_SHOW_ALL                     787
+#define LANG_EXCCD_SELECT_PRESETS               788
+#define LANG_EXCCD_PRESETS_UNAVAILABLE          789
+#define LANG_EXCCD_FILM_BUTTON                  790
+#define LANG_EXCCD_ISO_BUTTON                   791
+#define LANG_EXCCD_NONE                         792
+#define LANG_EXCCD_LEFT                         793
+#define LANG_EXCCD_RIGHT                        794
+#define LANG_EXCCD_QUICK_ISO                    795
+#define LANG_EXCCD_QUICK_ISO_TITLE              796
+#define LANG_EXCCD_ISO_MODE_REQUIRED            797
 
-#define GUI_LANG_ITEMS                          782
+#define GUI_LANG_ITEMS                          797
 
 //-------------------------------------------------------------------
 extern void gui_lang_init();

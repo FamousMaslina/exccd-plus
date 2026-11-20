@@ -929,7 +929,7 @@ static void gui_show_build_info(__attribute__ ((unused))int arg)
     int comp_text_index = TEXT_COUNT - 1;
     const char *comp = text[comp_text_index];
     sprintf(buf, lang_str(LANG_MSG_BUILD_INFO_TEXT), camera_info.chdk_ver, camera_info.build_number, camera_info.build_svnrev, camera_info.build_date, camera_info.build_time, camera_info.platform, camera_info.platformsub, comp);
-    strcat(buf, "\nFilmsim: " FILMSIM_VERSION);
+    strcat(buf, "\n" FILMSIM_PRODUCT_NAME " " FILMSIM_VERSION);
     gui_mbox_init(LANG_MSG_BUILD_INFO_TITLE, (int)buf, MBOX_FUNC_RESTORE|MBOX_TEXT_LEFT, NULL);
 }
 
@@ -2212,16 +2212,46 @@ static CMenuItem chdk_settings_menu_items[] = {
     {0}
 };
 
-static CMenu chdk_settings_menu __attribute__((unused)) = {0x20,LANG_MENU_CHDK_SETTINGS, chdk_settings_menu_items };
+CMenu chdk_settings_menu = {0x20,LANG_MENU_CHDK_SETTINGS, chdk_settings_menu_items };
 
 //-------------------------------------------------------------------
 
 extern CMenu script_submenu;
 
 //-------------------------------------------------------------------
-// Schlankes Filmsimulations-Menue
+// EXCCD options
 //-------------------------------------------------------------------
-#include "filmsim.h"
+
+static int gui_filmsim_require_photo_mode(int title)
+{
+    if (filmsim_picker_allowed())
+        return 1;
+
+    gui_mbox_init(title, LANG_EXCCD_PHOTO_MODE_REQUIRED,
+                  MBOX_FUNC_RESTORE|MBOX_TEXT_CENTER|MBOX_BTN_OK, NULL);
+    return 0;
+}
+
+static void gui_filmsim_select(__attribute__ ((unused))int arg)
+{
+    if (gui_filmsim_require_photo_mode(LANG_EXCCD_SELECT_FILM))
+        filmsim_open_menu();
+}
+
+static void gui_filmsim_catalog(int presets)
+{
+    if (gui_filmsim_require_photo_mode(presets ? LANG_EXCCD_SELECT_PRESETS : LANG_EXCCD_SHOW_ALL))
+        filmsim_open_catalog(presets);
+}
+
+#ifdef FILMSIM_QUICK_BUTTONS
+static void gui_filmsim_quick_iso(__attribute__ ((unused))int arg)
+{
+    if (!filmsim_quick_iso_open())
+        gui_mbox_init(LANG_EXCCD_QUICK_ISO_TITLE, LANG_EXCCD_ISO_MODE_REQUIRED,
+                      MBOX_FUNC_RESTORE|MBOX_TEXT_CENTER|MBOX_BTN_OK, NULL);
+}
+#endif
 
 // RAW zusaetzlich als DNG speichern (ein Schalter statt RAW-Untermenue)
 static const char* gui_filmsim_raw_enum(int change, __attribute__ ((unused))int arg)
@@ -2246,7 +2276,8 @@ static void gui_filmsim_develop(__attribute__ ((unused))int arg)
         gui_mbox_init(LANG_MENU_RAW_DEVELOP, LANG_EXCCD_DEV_CANCELLED, MBOX_FUNC_RESTORE|MBOX_TEXT_CENTER|MBOX_BTN_OK, NULL);
         return;
     }
-    libfselect->file_select(LANG_RAW_DEVELOP_SELECT_FILE, "A/DCIM", "A", filmsim_develop_select);
+    if (gui_filmsim_require_photo_mode(LANG_MENU_RAW_DEVELOP))
+        libfselect->file_select(LANG_RAW_DEVELOP_SELECT_FILE, "A/DCIM", "A", filmsim_develop_select);
 }
 
 // RAW loeschen: Browser wie beim Entwickeln, SET loescht (modules/gui_fselect.c)
@@ -2474,7 +2505,7 @@ static CMenu look_submenu = {0x5f,LANG_EXCCD_LOOK, look_submenu_items };
 
 static CMenuItem exccd_raw_items[] = {
     MENU_ITEM   (0x5c,LANG_EXCCD_SAVE_RAW,                  MENUITEM_ENUM,      gui_filmsim_raw_enum, 0 ),
-    MENU_ITEM   (0x2a,LANG_MENU_RAW_DEVELOP,                MENUITEM_PROC,      gui_filmsim_develop, 0 ),
+    MENU_ITEM   (0x2a,LANG_EXCCD_RAW_DEVELOP,               MENUITEM_PROC,      gui_filmsim_develop, 0 ),
     MENU_ITEM   (0x0,(int)"",                               MENUITEM_SEPARATOR, 0, 0 ),
     MENU_ITEM   (0x33,LANG_EXCCD_RAW_DELETE,                MENUITEM_PROC,      gui_filmsim_raw_delete, 0 ),
     MENU_ITEM   (0x33,LANG_EXCCD_RAW_DEL_ORPHANS,           MENUITEM_PROC,      gui_filmsim_raw_clean, 1 ),
@@ -2485,7 +2516,13 @@ static CMenuItem exccd_raw_items[] = {
 static CMenu exccd_raw_menu = {0x5c,(int)"RAW", exccd_raw_items };
 
 // Oben Rezept und Look, darunter die Kamera fuer die Situation (nicht im Rezept)
-static CMenuItem root_menu_items[] = {
+static CMenuItem exccd_menu_items[] = {
+    MENU_ITEM   (0x5f,LANG_EXCCD_SELECT_FILM,               MENUITEM_PROC,      gui_filmsim_select, 0 ),
+    MENU_ITEM   (0x5f,LANG_EXCCD_SHOW_ALL,                   MENUITEM_PROC,      gui_filmsim_catalog, 0 ),
+    MENU_ITEM   (0x5f,LANG_EXCCD_SELECT_PRESETS,             MENUITEM_PROC,      gui_filmsim_catalog, 1 ),
+#ifdef FILMSIM_QUICK_BUTTONS
+    MENU_ITEM   (0x61,LANG_EXCCD_QUICK_ISO,                  MENUITEM_PROC,      gui_filmsim_quick_iso, 0 ),
+#endif
     MENU_ITEM   (0x5f,LANG_EXCCD_RECIPE,                    MENUITEM_ENUM,      filmsim_recipe_enum, 0 ),
     MENU_ITEM   (0x5f,(int)filmsim_look_text,               MENUITEM_SUBMENU,   &look_submenu, 0 ),
     MENU_ITEM   (0x0,(int)"",                               MENUITEM_SEPARATOR, 0, 0 ),
@@ -2505,7 +2542,24 @@ static CMenuItem root_menu_items[] = {
     {0}
 };
 
-CMenu root_menu = {0x20,LANG_EXCCD_OPTIONS, root_menu_items };
+CMenu exccd_menu = {0x5f,LANG_EXCCD_OPTIONS, exccd_menu_items };
+
+static CMenuItem root_menu_items[] = {
+    MENU_ITEM   (0x21,LANG_MENU_OPERATION_PARAM,           MENUITEM_SUBMENU,   &operation_submenu, 0 ),
+    MENU_ITEM   (0x23,LANG_MENU_VIDEO_PARAM,               MENUITEM_SUBMENU,   &video_submenu, 0 ),
+    MENU_ITEM   (0x24,LANG_MENU_MAIN_RAW_PARAM,             MENUITEM_SUBMENU,   &raw_submenu, 0 ),
+    MENU_ITEM   (0x7f,LANG_MENU_EDGE_OVERLAY,               MENUITEM_SUBMENU,   &edge_overlay_submenu, 0 ),
+    MENU_ITEM   (0x25,LANG_MENU_MAIN_HISTO_PARAM,           MENUITEM_SUBMENU,   &histo_submenu, 0 ),
+    MENU_ITEM   (0x26,LANG_MENU_MAIN_ZEBRA_PARAM,           MENUITEM_SUBMENU,   &zebra_submenu, 0 ),
+    MENU_ITEM   (0x27,LANG_MENU_MAIN_SCRIPT_PARAM,          MENUITEM_SUBMENU,   &script_submenu, 0 ),
+    MENU_ITEM   (0x22,LANG_MENU_CHDK_SETTINGS,              MENUITEM_SUBMENU,   &chdk_settings_menu, 0 ),
+    MENU_ITEM   (0x29,LANG_MENU_MAIN_MISC,                  MENUITEM_SUBMENU,   &misc_submenu, 0 ),
+    MENU_ITEM   (0x5f,LANG_EXCCD_PLUS,                     MENUITEM_SUBMENU,   &exccd_menu, 0 ),
+    MENU_ITEM   (0x2e,LANG_MENU_USER_MENU,                  MENUITEM_SUBMENU,   &user_submenu, 0 ),
+    {0}
+};
+
+CMenu root_menu = {0x20,LANG_MENU_MAIN_TITLE, root_menu_items };
 
 // Set visibility of User Menu in root menu based on user menu state
 // Note this hack requires the User Menu entry to be the last one in the root_menu_items array above. 
@@ -2741,6 +2795,11 @@ void gui_init()
 }
 
 //-------------------------------------------------------------------
+int gui_is_mode(const gui_handler *mode)
+{
+    return gui_mode == mode;
+}
+
 // Set new GUI mode, returns old mode
 gui_handler* gui_set_mode(gui_handler *mode) 
 {
@@ -3342,7 +3401,7 @@ int gui_touch_process(int x, int y)
 }
 
 //------------------------------------------------------------------- 
-static int gui_current_alt_state = ALT_MODE_NORMAL;
+static volatile int gui_current_alt_state = ALT_MODE_NORMAL;
 
 // Called from the KBD task code to change ALT mode state
 void gui_set_alt_mode_state(int new_state)
@@ -3355,12 +3414,16 @@ void gui_activate_alt_mode()
 {
     extern gui_handler scriptGuiHandler;
 
-    switch (gui_current_alt_state)
+    int state = gui_current_alt_state;
+    if (state == ALT_MODE_NORMAL)
+        return;
+    gui_current_alt_state = ALT_MODE_NORMAL;
+    switch (state)
     {
     case ALT_MODE_ENTER:
     case ALT_MODE_ENTER_SCRIPT:
         
-        gui_set_mode((gui_current_alt_state == ALT_MODE_ENTER_SCRIPT) ? &scriptGuiHandler : &altGuiHandler);
+        gui_set_mode((state == ALT_MODE_ENTER_SCRIPT) ? &scriptGuiHandler : &altGuiHandler);
 
         conf_update_prevent_shutdown();
         
@@ -3369,15 +3432,34 @@ void gui_activate_alt_mode()
         // If user menu set to start automatically when <ALT> mode entered 
         // then enter user menu mode, unless a script was paused by exiting 
         // <ALT> mode when the script was running.
-	    gui_user_menu_flag = 0;
-        // Filmsim-Firmware: Print-Taste oeffnet direkt die Filmliste
-        if ((gui_current_alt_state == ALT_MODE_ENTER) && !camera_info.state.state_kbd_script_run) {
-            filmsim_open_menu();
+        gui_user_menu_flag = 0;
+        if ((conf.user_menu_enable == 2) && !camera_info.state.state_kbd_script_run) {
+            gui_menu_init(&user_submenu);
+            gui_set_mode(&menuGuiHandler);
+            gui_user_menu_flag = 1;
         }
         break;
 
+#ifdef FILMSIM_QUICK_BUTTONS
+    case ALT_MODE_ENTER_FILM:
+    case ALT_MODE_ENTER_ISO:
+        vid_turn_off_updates();
+        gui_user_menu_flag = 0;
+        if (state == ALT_MODE_ENTER_FILM) {
+            if (filmsim_picker_allowed())
+                filmsim_open_menu();
+            else
+                exit_alt();
+        } else if (!filmsim_quick_iso_open()) {
+            exit_alt();
+        }
+        conf_update_prevent_shutdown();
+        break;
+#endif
+
     case ALT_MODE_LEAVE:
         conf_save();
+        filmsim_label_release();
 
         // Unload all modules which are marked as safe to unload, or loaded for menus
         module_exit_alt();
@@ -3395,6 +3477,4 @@ void gui_activate_alt_mode()
         break;
     }
 
-    // Reset to stable state
-    gui_current_alt_state = ALT_MODE_NORMAL;
 }

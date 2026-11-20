@@ -113,6 +113,16 @@ RECIPES = {
         R=((.08, .12),  (.25, .31),  (.5, .57),  (.75, .795), (.92, .925)),
         G=((.08, .125), (.25, .32),  (.5, .585), (.75, .805), (.92, .93)),
         B=((.08, .135), (.25, .325), (.5, .58),  (.75, .795), (.92, .92)))),
+    # Sony-CFL (A620): fit against the a6700 FL JPEGs using the A620 JPEGs as
+    # the baseline. Use a lower blue reference gain so its shoulder spans more
+    # of the usable sensor range, including bright blue skies.
+    "SONYCFL": dict(wb=(1.70, 1.0, 1.0, 1.50), points=dict(
+        R=((.047, .053), (.11, .118), (.19, .197), (.31, .313), (.45, .448),
+           (.59, .591), (.72, .703), (.85, .823), (.95, .926)),
+        G=((.047, .054), (.11, .118), (.19, .189), (.31, .303), (.45, .436),
+           (.59, .580), (.72, .696), (.85, .813), (.95, .921)),
+        B=((.047, .053), (.11, .115), (.19, .180), (.31, .284), (.45, .415),
+           (.59, .558), (.72, .657), (.85, .796), (.95, .912)))),
 }
 
 def pchip(pts):
@@ -161,7 +171,7 @@ def dr_gain(lin, G):
 
 def channel_curve(ch, r, G=1):
     rgb = (0, 1, 1, 2)[ch]
-    g = WB[ch]
+    g = r.get("wb", WB)[ch]
     sh = r.get("shadow", (0, 0, 0))[rgb]
     hi = r.get("highlight", (0, 0, 0))[rgb]
     gain = r.get("gain", (1, 1, 1))[rgb]

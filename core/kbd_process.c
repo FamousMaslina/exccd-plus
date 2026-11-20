@@ -9,6 +9,7 @@
 #include "usb_remote.h"
 #include "clock.h"
 #include "debug_led.h"
+#include "filmsim.h"
 #ifdef FILMSIM_POWEROFF_HOLD_MS
 #include "levent.h"
 #include "shutdown.h"
@@ -66,11 +67,16 @@ int kbd_is_blocked()
     return kbd_blocked;
 }
 
-void enter_alt(int script_mode)
+static void enter_alt_mode(int mode)
 {
     clear_usb_power();         // Prevent previous USB remote pulse from starting script.
     kbd_blocked = 1;
-    gui_set_alt_mode_state(script_mode ? ALT_MODE_ENTER_SCRIPT : ALT_MODE_ENTER);
+    gui_set_alt_mode_state(mode);
+}
+
+void enter_alt(int script_mode)
+{
+    enter_alt_mode(script_mode ? ALT_MODE_ENTER_SCRIPT : ALT_MODE_ENTER);
 }
 
 void exit_alt()
@@ -134,6 +140,9 @@ static void filmsim_poweroff_hold()
 long kbd_process()
 {
     static int key_pressed;
+#ifdef FILMSIM_QUICK_BUTTONS
+    static int quick_key;
+#endif
 
 #ifdef FILMSIM_POWEROFF_HOLD_MS
     filmsim_poweroff_hold();
@@ -168,6 +177,15 @@ long kbd_process()
 
     // check for & process non-keyboard script terminate
     script_check_terminate();
+
+#ifdef FILMSIM_QUICK_BUTTONS
+    // Keep the opening press from moving the selection or leaking to Canon.
+    if (quick_key) {
+        if (!kbd_is_key_pressed(quick_key))
+            quick_key = 0;
+        return 1;
+    }
+#endif
 
     // Filmsim: verzoegertes Verlassen des ALT-Modus
     if (exit_alt_pending)
@@ -223,14 +241,9 @@ long kbd_process()
             {
                 if (!kbd_blocked)
                 {
-                    // Filmsim: Auswahl nur im Foto-Aufnahmemodus ohne offenes Canon-Menue
-                    extern int filmsim_alt_allowed(void);
-                    if (filmsim_alt_allowed())
-                    {
-                        // if start script on alt set, flag to run it
-                        if(conf.script_startup==SCRIPT_AUTOSTART_ALT) script_run_on_alt_flag = 1;
-                        enter_alt(camera_info.state.state_kbd_script_run);
-                    }
+                    // if start script on alt set, flag to run it
+                    if(conf.script_startup==SCRIPT_AUTOSTART_ALT) script_run_on_alt_flag = 1;
+                    enter_alt(camera_info.state.state_kbd_script_run);
                 }
                 else
                     exit_alt();
@@ -281,6 +294,19 @@ long kbd_process()
     extern int filmsim_batch_kbd(void);
     if (!kbd_blocked && filmsim_batch_kbd())
         return 1;
+
+#ifdef FILMSIM_QUICK_BUTTONS
+    if (!kbd_blocked && !usb_remote_active && !camera_info.state.state_kbd_script_run) {
+        int key = kbd_get_clicked_key();
+        int mode = filmsim_quick_mode(key);
+        if (mode != ALT_MODE_NORMAL) {
+            quick_key = key;
+            kbd_key_release_all();
+            enter_alt_mode(mode);
+            return 1;
+        }
+    }
+#endif
 
     // Filmsim: Zoomhebel bei Stufenzoom / fester Brennweite vor Canon verbergen
     extern int filmsim_zoom_kbd(void);

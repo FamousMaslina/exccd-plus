@@ -9,6 +9,8 @@
 #include "script_api.h"
 #include "gui_fselect.h"
 
+extern const CMenuItem *filmsim_quick_button_items(int *count);
+
 // Forward reference
 static void gui_update_script_submenu();
 
@@ -857,7 +859,10 @@ static void gui_update_script_submenu()
     }
 
     // Calculate # of header items, and total required for header, parameters, back button and terminator
-    int f = (sizeof(hdr_script_submenu_items) / sizeof(CMenuItem)) + warn;
+    int shortcut_count;
+    const CMenuItem *shortcuts = filmsim_quick_button_items(&shortcut_count);
+    int header_count = sizeof(hdr_script_submenu_items) / sizeof(CMenuItem);
+    int f = header_count + shortcut_count + warn;
     int n = f + script_param_count + 2;
 
     // If we need more room, then free up old buffer
@@ -880,6 +885,11 @@ static void gui_update_script_submenu()
 
     // Copy header items
     memcpy(script_submenu_items, hdr_script_submenu_items, sizeof(hdr_script_submenu_items));
+    if (shortcut_count) {
+        int title = header_count - 1;
+        script_submenu_items[title + shortcut_count] = script_submenu_items[title];
+        memcpy(&script_submenu_items[title], shortcuts, shortcut_count * sizeof(CMenuItem));
+    }
 
     // Add warning if no @chdk_version, or if chdk_version < script_version
     if (warn)

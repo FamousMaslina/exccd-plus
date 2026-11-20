@@ -142,10 +142,25 @@ static const filmsim_t *sims = sims_builtin;
 static int num_sims = NUM_BUILTIN;
 #define NUM_SIMS num_sims
 
+// Preset IDs stay distinct from FILMS.TXT indices across reboots.
+#define PRESET_ID_OFFSET (FILMS_TXT_MAX + 1)
+static const filmsim_t *preset_sims;
+static int preset_count;
+
+static const filmsim_t *film_at(int id)
+{
+    if (id >= 0 && id < NUM_SIMS)
+        return &sims[id];
+    if (preset_sims && id > PRESET_ID_OFFSET && id - PRESET_ID_OFFSET <= preset_count)
+        return &preset_sims[id - PRESET_ID_OFFSET];
+    return NULL;
+}
+
 // Anzeigename; "Aus" kommt aus der Sprachdatei (english.lng / german.lng)
 static const char* sim_name(int i)
 {
-    return i == 0 ? lang_str(LANG_EXCCD_OFF) : sims[i].name;
+    const filmsim_t *film = film_at(i);
+    return i && film ? film->name : lang_str(LANG_EXCCD_OFF);
 }
 
 #include "gui_osd.h"
@@ -156,11 +171,11 @@ int filmsim_photo_mode(void)
     return camera_info.state.mode_rec && !camera_info.state.mode_video && !camera_info.state.mode_play;
 }
 
-// Darf die Print-Taste die Filmauswahl oeffnen?
+// The film picker needs the still-photo palette.
 // Nicht bei offenem Canon-Menue / FUNC-Menue (andere Bildschirmpalette)
 static volatile int photo_since = 0;   // seit wann ununterbrochen Fotomodus (Tick)
 
-int filmsim_alt_allowed(void)
+int filmsim_picker_allowed(void)
 {
     if (!filmsim_photo_mode()) return 0;
     // direkt nach dem Einschalten meldet die Kamera kurzzeitig falsche
@@ -251,67 +266,81 @@ int filmsim_osd_hidden(void)
 //-------------------------------------------------------------------
 #define FILMS_TXT   "A/CHDK/FILMS/FILMS.TXT"
 #define FILMS_LOG   "A/CHDK/FILMS/FILMS.LOG"
+#define FILMS_BAK   "A/CHDK/FILMS/FILMS.BAK"
+#define PRESETS_LOG "A/CHDK/FILMS/PRESETS.LOG"
 #define FILMS_LOG_SIZE 1024
 
-// Tabelle und Texte auf dem Heap (gut 2 KB, der SX110-Kern ist knapp), nur bei gueltiger FILMS.TXT
-static filmsim_t *films_file = 0;
-static films_txt_str_t *films_str = 0;
-
-static void films_read_file(void)
+static filmsim_t *films_read_file(const char *path, const char *log_path, int *count)
 {
     struct stat st;
-    char *buf = 0, *log = 0;
+    filmsim_t *films = NULL;
     int n = 0, len = -1;
 
-    if (stat(FILMS_TXT, &st) != 0) {
-        if (stat(FILMS_LOG, &st) == 0) remove(FILMS_LOG);   // veraltetes Protokoll
-        return;
+    if (stat(path, &st) != 0) {
+        remove(log_path);
+        return NULL;
     }
-    log = malloc(FILMS_LOG_SIZE);
-    if (!log) return;
+    char *log = malloc(FILMS_LOG_SIZE);
+    if (!log) return NULL;
     log[0] = 0;
+    char *buf = NULL;
     if (st.st_size > 0 && st.st_size <= FILMS_TXT_FILE_MAX)
         buf = malloc(st.st_size + 1);
-    if (buf && !films_file) {
-        films_file = malloc((1 + FILMS_TXT_MAX) * sizeof(filmsim_t) + FILMS_TXT_MAX * sizeof(films_txt_str_t));
-        if (films_file) films_str = (films_txt_str_t *)(films_file + 1 + FILMS_TXT_MAX);
-        else { free(buf); buf = 0; }
-    }
     if (buf) {
-        int fd = open(FILMS_TXT, O_RDONLY, 0777);
+        int fd = open(path, O_RDONLY, 0777);
         if (fd >= 0) {
             len = read(fd, buf, st.st_size);
             close(fd);
         }
-        if (len > 0)
-            n = films_txt_parse(buf, len, films_file + 1, films_str, FILMS_TXT_MAX, log, FILMS_LOG_SIZE - 80);
+        if (len > 0) {
+            films = malloc((1 + FILMS_TXT_MAX) * sizeof(filmsim_t) + FILMS_TXT_MAX * sizeof(films_txt_str_t));
+            if (films) {
+                films_txt_str_t *strings = (films_txt_str_t *)(films + 1 + FILMS_TXT_MAX);
+                n = films_txt_parse(buf, len, films + 1, strings, FILMS_TXT_MAX, log, FILMS_LOG_SIZE - 80);
+            }
+        }
         free(buf);
-    } else {
-        strcpy(log, "File is empty or larger than 16 KB\r\n");
     }
 
     if (n > 0) {
-        films_file[0] = sims_builtin[0];    // "Aus"
-        sims = films_file;
-        num_sims = n + 1;
+        films[0] = sims_builtin[0];
+        *count = n;
     } else {
-        strcat(log, "No valid looks - using the built-in table\r\n");
-        if (films_file && sims != films_file) { free(films_file); films_file = 0; films_str = 0; }
+        strcat(log, "No valid looks could be loaded\r\n");
+        free(films);
+        films = NULL;
     }
 
     if (log[0]) {
         char hdr[48];
-        sprintf(hdr, "FILMS.TXT: %d looks loaded\r\n", n);
-        int fd = open(FILMS_LOG, O_WRONLY | O_CREAT | O_TRUNC, 0777);
+        sprintf(hdr, "%s: %d looks loaded\r\n", strrchr(path, '/') + 1, n);
+        int fd = open(log_path, O_WRONLY | O_CREAT | O_TRUNC, 0777);
         if (fd >= 0) {
             write(fd, hdr, strlen(hdr));
             write(fd, log, strlen(log));
             close(fd);
         }
-    } else if (stat(FILMS_LOG, &st) == 0) {
-        remove(FILMS_LOG);
+    } else {
+        remove(log_path);
     }
     free(log);
+    return films;
+}
+
+static int films_load_presets(void)
+{
+    if (!preset_sims)
+        preset_sims = films_read_file(FILMS_BAK, PRESETS_LOG, &preset_count);
+    return preset_sims != NULL;
+}
+
+static int film_find(int offset, int count, const char *name)
+{
+    for (int i = 1; i <= count; i++) {
+        if (strcmp(film_at(offset + i)->name, name) == 0)
+            return offset + i;
+    }
+    return 0;
 }
 
 // Der Look wird ueber seinen Namen gespeichert: Mit einer anderen FILMS.TXT oder
@@ -320,10 +349,10 @@ static void films_read_file(void)
 // behalten den Index und bekommen hier den Namen.
 static void film_name_store(void)
 {
-    int i = conf.film_sim;
+    const filmsim_t *film = film_at(conf.film_sim);
     conf.film_name[0] = 0;
-    if (i > 0 && i < num_sims) {
-        strncpy(conf.film_name, sims[i].name, sizeof(conf.film_name) - 1);
+    if (conf.film_sim && film) {
+        strncpy(conf.film_name, film->name, sizeof(conf.film_name) - 1);
         conf.film_name[sizeof(conf.film_name) - 1] = 0;
     }
 }
@@ -331,35 +360,34 @@ static void film_name_store(void)
 static void films_load(void)
 {
     static int done = 0;
-    int i;
     if (done) return;
     done = 1;
-    films_read_file();
-    if (!conf.film_name[0]) {
-        if (conf.film_sim < 0 || conf.film_sim >= num_sims) conf.film_sim = 0;
-        film_name_store();
-        return;
+    int count = 0;
+    const filmsim_t *full = films_read_file(FILMS_TXT, FILMS_LOG, &count);
+    if (full) {
+        sims = full;
+        num_sims = count + 1;
     }
-    for (i = 1; i < num_sims; i++)
-        if (strcmp(sims[i].name, conf.film_name) == 0) {
-            conf.film_sim = i;
-            return;
-        }
-    conf.film_sim = 0;
-    conf.film_name[0] = 0;
+    int from_preset = conf.film_sim > PRESET_ID_OFFSET && films_load_presets();
+    if (!conf.film_name[0]) {
+        if (!film_at(conf.film_sim)) conf.film_sim = 0;
+    } else {
+        int id = from_preset ? film_find(PRESET_ID_OFFSET, preset_count, conf.film_name) : 0;
+        conf.film_sim = id ? id : film_find(0, NUM_SIMS - 1, conf.film_name);
+    }
+    film_name_store();
 }
 
 static const filmsim_t* current(void)
 {
-    int i = conf.film_sim;
-    if (i < 0 || i >= NUM_SIMS) i = 0;
-    return &sims[i];
+    const filmsim_t *film = film_at(conf.film_sim);
+    return film ? film : &sims[0];
 }
 
 const char* filmsim_name(void)
 {
     int i = conf.film_sim;
-    return sim_name(i < 0 || i >= NUM_SIMS ? 0 : i);
+    return sim_name(i);
 }
 
 // Schwarzweiss im Sinne des Farbfilters: S/W-Filme und Tintype (Sepia, auch einfarbig)
@@ -806,6 +834,8 @@ int filmsim_dng_mark(const char *fn)
 }
 
 // Wird ca. alle 20 ms aus der Hauptschleife aufgerufen
+static gui_handler filmGuiHandler, wbgGuiHandler, devFxGuiHandler;
+
 void filmsim_tick(void)
 {
     static int cnt = 0;
@@ -820,18 +850,10 @@ void filmsim_tick(void)
         photo_since = 0;
     }
 
-    // Filmauswahl / Optionen offen, aber Modus-Schalter auf Video oder
-    // Wiedergabe gestellt -> sofort schliessen (andere Farbpalette)
-    static int close_sent = 0;
-    if (camera_info.state.gui_mode > GUI_MODE_NONE && !filmsim_photo_mode()) {
-        if (!close_sent) {
-            close_sent = 1;
-            extern void filmsim_label_release(void);
-            filmsim_label_release();
-            exit_alt();
-        }
-    } else {
-        close_sent = 0;
+    // Only the photo-specific EXCCD screens need to close on a mode change.
+    if (!filmsim_photo_mode() && (gui_is_mode(&filmGuiHandler)
+        || gui_is_mode(&wbgGuiHandler) || gui_is_mode(&devFxGuiHandler))) {
+        exit_alt();
     }
 
     filmsim_zoom_tick();
@@ -842,7 +864,7 @@ void filmsim_tick(void)
     if (!curve_done) {               // einmalig nach dem Start Kurve laden
         films_load();
         // Index aus aelterer Version / kuerzerer FILMS.TXT -> "Aus"
-        if (conf.film_sim < 0 || conf.film_sim >= NUM_SIMS) conf.film_sim = 0;
+        if (!film_at(conf.film_sim)) conf.film_sim = 0;
         set_curve(current());
         recipes_load();
         look_text_update();
@@ -874,13 +896,13 @@ void filmsim_tick(void)
 char filmsim_look_text[40];
 static void look_text_update(void)
 {
-    const char *n = conf.film_sim > 0 && conf.film_sim < NUM_SIMS ? filmsim_name() : sim_name(0);
+    const char *n = filmsim_name();
     sprintf(filmsim_look_text, "%s: %.24s", lang_str(LANG_EXCCD_LOOK), n);
 }
 
 void filmsim_set(int v)
 {
-    if (v < 0 || v >= NUM_SIMS) return;
+    if (!film_at(v)) return;
     int was_off = (conf.film_sim == 0);
     if (v != conf.film_sim) preview_pending = 1;
     conf.film_sim = v;
@@ -902,13 +924,13 @@ void filmsim_set(int v)
 
 //-------------------------------------------------------------------
 // Filmauswahl im Stil eines Filmschachtel-Fensters
-//   Print-Taste  -> Auswahl oeffnet sich mit dem aktiven Film
+//   Film selection opens with the active look.
 //   links/rechts oder hoch/runter -> blaettern
 //   FUNC/SET     -> uebernehmen und schliessen
 //   MENU         -> Optionen (RAW, System)
 //   Print        -> abbrechen
 //-------------------------------------------------------------------
-extern CMenu root_menu;     // "Optionen" (core/gui.c)
+extern CMenu exccd_menu;
 extern gui_handler menuGuiHandler;
 
 #define LABEL_TOP   2
@@ -927,6 +949,8 @@ static int need_draw = 0;           // 1 = alles, 2 = nur Leiste
 static unsigned char *label_buf = 0;
 static int label_len = 0;
 static int label_for = -1;          // fuer welchen Film label_buf gilt
+static int picker_offset;
+static int picker_count;
 
 static void label_free(void)
 {
@@ -953,9 +977,10 @@ static void label_load(int i)
     struct stat st;
     label_free();
     label_for = i;
-    if (!sims[i].label) return;
+    const filmsim_t *film = film_at(i);
+    if (!film || !film->label) return;
     strcpy(fn, "A/CHDK/FILMS/");
-    strcat(fn, sims[i].label);
+    strcat(fn, film->label);
     strcat(fn, LABEL_EXT);
     if (stat(fn, &st) != 0 || st.st_size < 8 || st.st_size > 120000) return;
     label_buf = malloc(st.st_size);
@@ -999,7 +1024,7 @@ static void card_draw(int i)
     int x0 = (camera_screen.width - LABEL_W) / 2, y0 = LABEL_TOP, m = 16, k;
     draw_rectangle(x0, y0, x0 + LABEL_W - 1, y0 + LABEL_H - 1, MAKE_COLOR(EX_BG, EX_RULE),
                    RECT_BORDER1|DRAW_FILLED|RECT_ROUND_CORNERS);
-    draw_string(x0 + m, y0 + 12, "EXCCD", MAKE_COLOR(EX_BG, COLOR_WHITE));
+    draw_string(x0 + m, y0 + 12, FILMSIM_PRODUCT_NAME, MAKE_COLOR(EX_BG, COLOR_WHITE));
     draw_hline(x0 + m, y0 + 34, LABEL_W - 2 * m, EX_RULE);
     int sx = (len * FONT_WIDTH * 2 <= LABEL_W - 2 * m) ? 2 : 1;
     draw_string_scaled(x0 + m, y0 + 60, n, MAKE_COLOR(EX_BG, COLOR_WHITE), sx, 2);
@@ -1013,7 +1038,8 @@ static void card_draw(int i)
 // Leiste unter der Lasche: Pfeile grau, Name weiss, aktiver Film mit Quadrat
 static void bar_draw(void)
 {
-    const char *n = sim_name(sel);
+    const int film = sel ? picker_offset + sel : 0;
+    const char *n = sim_name(film);
     int len = strlen(n);
     int x0 = (camera_screen.width - LABEL_W) / 2, x1 = x0 + LABEL_W - FONT_WIDTH;
     int x = (camera_screen.width - len * FONT_WIDTH) / 2;
@@ -1024,10 +1050,10 @@ static void bar_draw(void)
     // Position in der Liste, bei vielen Looks sonst schwer zu schaetzen
     if (sel > 0) {
         char pos[12];
-        sprintf(pos, "%d/%d", sel, NUM_SIMS - 1);
+        sprintf(pos, "%d/%d", sel, picker_count - 1);
         draw_string(x0 + 2 * FONT_WIDTH, BAR_Y, pos, MAKE_COLOR(COLOR_BLACK, EX_GREY));
     }
-    if (sel == conf.film_sim) {
+    if (film == conf.film_sim) {
         x += 6;
         draw_rectangle(x - 12, BAR_Y + 5, x - 7, BAR_Y + 10, MAKE_COLOR(COLOR_WHITE, COLOR_WHITE),
                        RECT_BORDER0|DRAW_FILLED);
@@ -1044,10 +1070,11 @@ static void film_gui_draw(int force)
     if (force) need_draw = 1;
     if (!need_draw) return;
     if (need_draw == 1) {
+        const int film = sel ? picker_offset + sel : 0;
         draw_rectangle(0, 0, camera_screen.width - 1, camera_screen.height - 1,
                        MAKE_COLOR(COLOR_BLACK, COLOR_BLACK), RECT_BORDER0|DRAW_FILLED);
-        if (label_for != sel) label_load(sel);
-        if (!label_draw()) card_draw(sel);
+        if (label_for != film) label_load(film);
+        if (!label_draw()) card_draw(film);
     }
     bar_draw();
     need_draw = 0;
@@ -1068,26 +1095,27 @@ static void film_gui_close(void)
 
 static int film_gui_kbd(void)
 {
+    const int step = picker_count > 5 ? 5 : 1;
     switch (kbd_get_autoclicked_key() | get_jogdial_direction())
     {
     case KEY_LEFT: case JOGDIAL_LEFT:
-        sel = (sel > 0) ? sel - 1 : NUM_SIMS - 1;
+        sel = (sel > 0) ? sel - 1 : picker_count - 1;
         need_draw = 1;
         break;
     case KEY_RIGHT: case JOGDIAL_RIGHT:
-        sel = (sel < NUM_SIMS - 1) ? sel + 1 : 0;
+        sel = (sel + 1) % picker_count;
         need_draw = 1;
         break;
     case KEY_UP:                    // grosser Sprung
-        sel = (sel + NUM_SIMS - 5 % NUM_SIMS) % NUM_SIMS;
+        sel = (sel + picker_count - step) % picker_count;
         need_draw = 1;
         break;
     case KEY_DOWN:
-        sel = (sel + 5) % NUM_SIMS;
+        sel = (sel + step) % picker_count;
         need_draw = 1;
         break;
     case KEY_SET:
-        filmsim_set(sel);
+        filmsim_set(sel ? picker_offset + sel : 0);
         if (dev_armed) {                // RAW entwickeln: weiter zu den Effekten
             dev_pick_only(sel);
             label_free();
@@ -1104,7 +1132,8 @@ static int film_gui_kbd(void)
 static void film_gui_menu_btn(void)
 {
     label_free();
-    gui_menu_init(&root_menu);
+    if (get_curr_menu() != &exccd_menu)
+        gui_menu_init(&exccd_menu);
     gui_set_mode(&menuGuiHandler);
 }
 
@@ -1135,10 +1164,177 @@ void filmsim_open_menu(void)
     palette_autosave();
 #endif
     films_load();
-    sel = conf.film_sim;
-    if (sel < 0 || sel >= NUM_SIMS) sel = 0;
+    int presets = !dev_armed && conf.film_presets_only && films_load_presets();
+    picker_offset = presets ? PRESET_ID_OFFSET : 0;
+    picker_count = presets ? preset_count + 1 : NUM_SIMS;
+    int id = conf.film_sim ? film_find(picker_offset, picker_count - 1, current()->name) : 0;
+    sel = id ? id - picker_offset : 0;
     need_draw = 1;
     gui_set_mode(&filmGuiHandler);
+}
+
+void filmsim_open_catalog(int presets)
+{
+    if (presets && !films_load_presets()) {
+        gui_mbox_init(LANG_EXCCD_SELECT_PRESETS, LANG_EXCCD_PRESETS_UNAVAILABLE,
+                      MBOX_FUNC_RESTORE|MBOX_TEXT_CENTER|MBOX_BTN_OK, NULL);
+        return;
+    }
+    conf.film_presets_only = presets;
+    conf_save();
+    filmsim_open_menu();
+}
+
+#ifdef FILMSIM_QUICK_BUTTONS
+enum { QUICK_NONE, QUICK_LEFT, QUICK_RIGHT, QUICK_BUTTON_COUNT };
+static const int quick_keys[] = { 0, KEY_LEFT, KEY_RIGHT };
+static const int quick_names[] = { LANG_EXCCD_NONE, LANG_EXCCD_LEFT, LANG_EXCCD_RIGHT };
+
+void filmsim_normalize_quick_buttons(void)
+{
+    if ((unsigned)conf.film_quick_button >= QUICK_BUTTON_COUNT)
+        conf.film_quick_button = QUICK_NONE;
+    if ((unsigned)conf.iso_quick_button >= QUICK_BUTTON_COUNT
+        || conf.iso_quick_button == conf.film_quick_button)
+        conf.iso_quick_button = QUICK_NONE;
+}
+
+static const char* filmsim_quick_button_enum(int change, int iso)
+{
+    filmsim_normalize_quick_buttons();
+    int *button = iso ? &conf.iso_quick_button : &conf.film_quick_button;
+    int occupied = iso ? conf.film_quick_button : conf.iso_quick_button;
+    if (change) {
+        int direction = change > 0 ? 1 : -1;
+        gui_enum_value_change(button, direction, QUICK_BUTTON_COUNT);
+        if (*button != QUICK_NONE && *button == occupied)
+            gui_enum_value_change(button, direction, QUICK_BUTTON_COUNT);
+    }
+    return lang_str(quick_names[*button]);
+}
+
+static int quick_iso_available(int mode)
+{
+    return mode == MODE_P || mode == MODE_TV || mode == MODE_AV || mode == MODE_M;
+}
+
+int filmsim_quick_mode(int key)
+{
+    if ((key != KEY_LEFT && key != KEY_RIGHT) || !camera_info.state.gui_mode_none
+        || camera_info.state.is_shutter_half_press || recreview_hold)
+        return ALT_MODE_NORMAL;
+
+    filmsim_normalize_quick_buttons();
+    int mode = ALT_MODE_NORMAL;
+    if (key == quick_keys[conf.film_quick_button])
+        mode = ALT_MODE_ENTER_FILM;
+    else if (key == quick_keys[conf.iso_quick_button] && quick_iso_available(camera_info.state.mode_shooting))
+        mode = ALT_MODE_ENTER_ISO;
+
+    if (mode != ALT_MODE_NORMAL && filmsim_picker_allowed() && !shooting_in_progress()
+        && camera_info.state.state_shooting_progress != SHOOTING_PROGRESS_PROCESSING)
+        return mode;
+    return ALT_MODE_NORMAL;
+}
+
+extern const ISOTable iso_table[];
+extern const unsigned int ISO_SIZE;
+static int quick_iso_mode;
+static int quick_iso_first;
+static int quick_iso_selected;
+
+static int quick_iso_still_open(void)
+{
+    return filmsim_photo_mode() && !recreview_hold
+        && camera_info.state.mode_shooting == quick_iso_mode;
+}
+
+static void quick_iso_draw(__attribute__ ((unused))int force)
+{
+    if (!quick_iso_still_open()) {
+        exit_alt();
+        return;
+    }
+    const char *title = lang_str(LANG_EXCCD_QUICK_ISO_TITLE);
+    const int cell_width = 42, height = 51;
+    const int count = (int)ISO_SIZE - quick_iso_first;
+    const int width = count * cell_width + 28;
+    const int x = (camera_screen.width - width) / 2;
+    const int y = (camera_screen.height - height) / 2;
+    draw_rectangle(x, y, x + width - 1, y + height - 1,
+                   MAKE_COLOR(COLOR_BLACK, COLOR_WHITE), RECT_BORDER1|DRAW_FILLED);
+    draw_string(x + (width - (int)strlen(title) * FONT_WIDTH) / 2,
+                y + 4, title, MAKE_COLOR(COLOR_BLACK, COLOR_WHITE));
+    for (int i = quick_iso_first; i < (int)ISO_SIZE; i++) {
+        const char *label = iso_table[i].name;
+        int left = x + 14 + (i - quick_iso_first) * cell_width;
+        int selected = i == quick_iso_selected;
+        if (selected)
+            draw_rectangle(left + 1, y + 24, left + cell_width - 2, y + 45,
+                           MAKE_COLOR(COLOR_WHITE, COLOR_WHITE), RECT_BORDER0|DRAW_FILLED);
+        draw_string(left + (cell_width - (int)strlen(label) * FONT_WIDTH) / 2,
+                    y + 27, label, selected ? MAKE_COLOR(COLOR_WHITE, COLOR_BLACK)
+                                              : MAKE_COLOR(COLOR_BLACK, COLOR_WHITE));
+    }
+}
+
+static int quick_iso_kbd(void)
+{
+    if (!quick_iso_still_open()) {
+        exit_alt();
+        return 0;
+    }
+    int half = kbd_is_key_clicked(KEY_SHOOT_HALF);
+    if (half || kbd_is_key_clicked(KEY_SET)) {
+        shooting_set_iso_mode(iso_table[quick_iso_selected].id);
+        if (half)
+            exit_alt();
+        else
+            exit_alt_on_release();
+    } else if (kbd_is_key_clicked(KEY_LEFT) && quick_iso_selected > quick_iso_first) {
+        quick_iso_selected--;
+    } else if (kbd_is_key_clicked(KEY_RIGHT) && quick_iso_selected + 1 < (int)ISO_SIZE) {
+        quick_iso_selected++;
+    }
+    return 0;
+}
+
+static gui_handler quickIsoGuiHandler = { GUI_MODE_MODULE, quick_iso_draw, quick_iso_kbd, exit_alt_on_release, 0, 0 };
+
+int filmsim_quick_iso_open(void)
+{
+    int mode = camera_info.state.mode_shooting;
+    if (!quick_iso_available(mode) || !filmsim_picker_allowed() || recreview_hold)
+        return 0;
+
+    quick_iso_mode = mode;
+    quick_iso_first = mode == MODE_M ? 1 : 0;
+    quick_iso_selected = quick_iso_first;
+    int current_iso = shooting_get_iso_mode();
+    for (int i = quick_iso_first; i < (int)ISO_SIZE; i++) {
+        if (iso_table[i].id == current_iso) {
+            quick_iso_selected = i;
+            break;
+        }
+    }
+    gui_set_mode(&quickIsoGuiHandler);
+    return 1;
+}
+#endif
+
+const CMenuItem *filmsim_quick_button_items(int *count)
+{
+#ifdef FILMSIM_QUICK_BUTTONS
+    static const CMenuItem items[] = {
+        MENU_ITEM(0x22, LANG_EXCCD_FILM_BUTTON, MENUITEM_ENUM, filmsim_quick_button_enum, 0),
+        MENU_ITEM(0x22, LANG_EXCCD_ISO_BUTTON,  MENUITEM_ENUM, filmsim_quick_button_enum, 1),
+    };
+    *count = sizeof(items) / sizeof(items[0]);
+    return items;
+#else
+    *count = 0;
+    return NULL;
+#endif
 }
 
 // Menue-Eintrag "Filmsimulation" (MENUITEM_ENUM)
@@ -2599,8 +2795,8 @@ static void recipe_from_conf(recipe_t *r)
 {
     r->used = 1;
     r->film[0] = 0;
-    if (conf.film_sim > 0 && conf.film_sim < NUM_SIMS) {
-        strncpy(r->film, sims[conf.film_sim].name, FILMS_TXT_NAME_MAX);
+    if (conf.film_sim > 0 && film_at(conf.film_sim)) {
+        strncpy(r->film, current()->name, FILMS_TXT_NAME_MAX);
         r->film[FILMS_TXT_NAME_MAX] = 0;
     }
     r->shift_r = wb_shift_clamp(conf.film_wb_r);
@@ -2635,10 +2831,16 @@ static int recipe_matches(const recipe_t *r)
 static void recipe_apply(int k)
 {
     const recipe_t *r = &recipes[k];
-    int i, film = conf.film_sim;            // Film nicht auf der Karte: bleibt (Anzeige mit *)
-    if (!r->film[0]) film = 0;
-    else for (i = 1; i < NUM_SIMS; i++)
-        if (name_same(sims[i].name, r->film)) { film = i; break; }
+    int film = r->film[0] ? conf.film_sim : 0;
+    if (r->film[0] && !name_same(filmsim_name(), r->film)) {
+        int i;
+        for (i = 1; i < NUM_SIMS; i++)
+            if (name_same(sims[i].name, r->film)) { film = i; break; }
+        if (i == NUM_SIMS && films_load_presets()) {
+            for (i = 1; i <= preset_count; i++)
+                if (name_same(preset_sims[i].name, r->film)) { film = PRESET_ID_OFFSET + i; break; }
+        }
+    }
     conf.film_dr        = r->v[RF_DR];
     conf.film_cnr       = r->v[RF_NR];
     conf.film_bwfilter  = r->v[RF_BWFILTER];
@@ -3177,7 +3379,6 @@ static CMenu dev_fx_menu = {0x2a,LANG_EXCCD_DEV_FX, dev_fx_items };
 // Wie das normale Menue, aber der Ausloeser schliesst es sofort: Wer hier ausloest, will
 // entwickeln. Sonst bekaeme Canon den Ausloeser im ALT-Modus nicht mit, und das
 // naechste Oeffnen von RAW develop braeche die Entwicklung ab.
-static gui_handler devFxGuiHandler;
 static int dev_fx_kbd(void)
 {
     if (kbd_is_key_pressed(KEY_SHOOT_HALF) || kbd_is_key_pressed(KEY_SHOOT_FULL)) {

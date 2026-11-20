@@ -116,7 +116,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: exccd-${{ env.VERSION }}-${{ env.PLATFORM }}
+          name: exccd-plus-${{ env.VERSION }}-${{ env.PLATFORM }}
           path: dist/*.zip
 
       - uses: actions/upload-artifact@v4
@@ -161,7 +161,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          pattern: exccd-*
+          pattern: exccd-plus-*
           path: dist
           merge-multiple: true
 
@@ -180,7 +180,7 @@ jobs:
           mkdir -p release
           # nur die erste Firmware ist auf der Kamera getestet (cameras.txt)
           for cam in $(awk '!/^#/ && $3 == "stabil" { split($2, s, ","); print $1 "-" s[1] }' tools/filmsim/cameras.txt); do
-            cp "dist/exccd-$VERSION-$cam-full.zip" release/
+            cp "dist/exccd-plus-$VERSION-$cam-full.zip" release/
           done
           ls -l release
 
@@ -188,7 +188,7 @@ jobs:
         run: |
           sudo apt-get update -q && sudo apt-get install -y python3-pil
           gcc -Wall -Wextra -I core -o "$RUNNER_TEMP/test_films_txt" tools/filmsim/test_films_txt.c core/filmsim_txt.c
-          python3 tools/site/build_site.py dist/exccd-$VERSION-*-full.zip _site --version "$VERSION"
+          python3 tools/site/build_site.py dist/exccd-plus-$VERSION-*-full.zip _site --version "$VERSION"
           node tools/site/test_zipjoin.mjs _site "$RUNNER_TEMP/zipjoin"
           python3 tools/filmsim/make_curves.py "$RUNNER_TEMP/curves" > /dev/null
           node tools/site/test_curves.mjs _site "$RUNNER_TEMP/curves"
@@ -206,7 +206,7 @@ jobs:
         if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" release/*.zip installer/exccd-installer.exe --title "EXCCD $GITHUB_REF_NAME" --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" release/*.zip installer/exccd-installer.exe --title "EXCCD+ $GITHUB_REF_NAME" --generate-notes
 
   # Webseite nur bei Releases (Tag) oder von Hand veroeffentlichen.
   # Einmalig im Repo einstellen: Settings -> Pages -> Source: GitHub Actions

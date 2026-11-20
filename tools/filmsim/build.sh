@@ -12,7 +12,7 @@
 # filmsim.o der IXUS 145 in der Firmware der IXUS 60.
 # Firmwares, die in camera_list.csv eine SOURCE_FIRMWARE haben (Alias), sind
 # bei CHDK eine Kopie dieses Builds (firzipsubcompletecopy); hier genauso.
-# Ergebnis: dist/<version>/exccd-<version>-<plattform>-<sub>-full.zip, daneben
+# Ergebnis: dist/<version>/exccd-plus-<version>-<plattform>-<sub>-full.zip, daneben
 # die Build-Logs. Jede Version hat ihren eigenen Ordner, gleiche Version = ueberschreiben.
 # Vorher: . ../../toolchain/env.sh
 
@@ -26,6 +26,7 @@ CAMERAS=$(awk '!/^#/ && NF { print $1 ":" $2 }' tools/filmsim/cameras.txt)
 
 version=$(sed -n 's/^#define FILMSIM_VERSION "\(.*\)"/\1/p' core/filmsim.h)
 out=dist/$version
+zip_prefix=$out/exccd-plus-$version
 mkdir -p bin $out
 failed=""
 
@@ -54,15 +55,16 @@ for cam in $CAMERAS; do
             src=$(source_fw $p $s)
             if [ $pass = own ] && [ -n "$src" ]; then continue; fi
             if [ $pass = alias ] && [ -z "$src" ]; then continue; fi
-            zipname=$out/exccd-$version-$p-$s-full.zip
+            zipname=$zip_prefix-$p-$s-full.zip
             if [ -n "$ONLY_MISSING" ] && [ -f $zipname ] && [ -f tools/installer/probes/FWPROBE-$p.BIN ]; then
                 echo "=== $p $s schon gebaut"
                 probe_done=1
                 continue
             fi
             if [ -n "$src" ]; then
-                if [ -f $out/exccd-$version-$p-$src-full.zip ]; then
-                    cp $out/exccd-$version-$p-$src-full.zip $zipname
+                source_zip=$zip_prefix-$p-$src-full.zip
+                if [ -f "$source_zip" ]; then
+                    cp "$source_zip" "$zipname"
                     echo "=== $p $s = Kopie von $src -> $zipname"
                 else
                     fail $p-$s "(Quelle $src nicht gebaut)"
@@ -99,7 +101,8 @@ for cam in $CAMERAS; do
                 fi
                 [ $free -ge 4096 ] || echo "    Hinweis: unter 4 KB frei, kein ARAM-Heap (malloc nutzt Canon-Speicher)"
             fi
-            cp bin/$p-$s-*-full.zip $zipname
+            cp bin/$p-$s-*-full.zip "$zipname"
+            zip -q "$zipname" COPYING LICENSE-LOOKS.md
             # Firmware-Pruefprogramm fuer den Installer (tools/installer/probes/), eins je Kamera:
             # es blinkt die Version, die es im ROM findet, gilt also fuer alle Firmwares.
             # Ohne Pruefprogramm zeigt der Installer statt der Blink-Tabelle die vers.req-Anleitung,

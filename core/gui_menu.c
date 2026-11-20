@@ -306,8 +306,8 @@ void gui_menu_back()
     {
         // 'Back' selected; but no menu to go back to
         // Occurs when script menu opened using 'Func/Set' button
-        // Filmsim-Firmware: kein ALT-Bildschirm, direkt zurueck zur Kamera
-        exit_alt_on_release();
+        // Return to normal <ALT> mode.
+        gui_set_mode(&altGuiHandler);
     }
 }
 
@@ -1131,9 +1131,14 @@ void gui_menu_kbd_process_menu_btn()
 
     conf_save();
 
-    // Filmsim-Firmware: MENU schliesst die Liste / Optionen
-    gui_user_menu_flag = 0;
-    exit_alt_on_release();
+    if (gui_user_menu_flag)
+    {
+        gui_set_mode(&menuGuiHandler);
+        gui_user_menu_flag = 0;
+        gui_menu_init(&root_menu);
+    }
+    else
+        gui_set_mode(&altGuiHandler);
 }
 
 //-------------------------------------------------------------------

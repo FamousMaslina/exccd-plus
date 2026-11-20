@@ -1,24 +1,18 @@
-# EXCCD
+# EXCCD+
 
-Film looks for old Canon point-and-shoot cameras, built on [CHDK](https://chdk.fandom.com/).
+EXCCD+ v1.0.0 combines the original [CHDK](https://chdk.fandom.com/) menu and script loader
+with the film looks from [EXCCD v1.10.2](https://github.com/35mmSebas/exccd). Each look
+combines Canon's *My Colors* settings with a tone curve applied before the camera creates the JPEG.
 
-EXCCD adds a film selection to the camera: press the **Print** button, flip through the
-film labels and pick a look. Each look combines Canon's own *My Colors* settings with a
-tone curve that is applied to the raw data before the JPEG is created, so the pictures
-come out of the camera finished.
-
-> **Public beta, work in progress.** EXCCD is a hobby project. Every old camera model behaves a
-> little differently, so looks get re-tuned as real photos come in and things change between
-> versions. Feedback and pull requests are very welcome.
+The Canon PowerShot A620 with firmware 1.00f is the primary EXCCD+ target. Other camera
+ports come from upstream EXCCD or this. See the [build target list](tools/filmsim/cameras.txt)
+for model IDs and firmware versions. The table reports upstream camera testing for those ports.
 
 | Camera | Firmware | Status |
 |---|---|---|
-| Digital IXUS 60 / PowerShot SD600 | 1.00d | tested up to v1.9.x, v1.10 features in testing; offered on the website |
-| IXUS 132 / PowerShot ELPH 115 IS | 1.00b | in testing (built, partly tested) |
-| PowerShot SX110 IS | 1.00b | in testing (built, partly tested) |
-| IXUS 145 / PowerShot ELPH 135 | 1.00c | ported, never run on a real camera |
+| PowerShot A620 | 1.00f | Primary EXCCD+ build target |
 
-> The camera menus are in English. For German: *MENU → System → Language... → `german.lng`*.
+
 
 ## Looks
 
@@ -55,35 +49,58 @@ Every look also has two **Dynamic+** variants (DR+1, DR+2) that expose shorter t
 highlights and lift the shadows with the curve. They only shift the exposure when the camera
 picks the shutter speed: in Tv, M and long shutter mode, and with flash, the normal curve is used.
 
+### Sony-CFL (PowerShot A620)
+
+**Sony-CFL** is a custom look tuned on the PowerShot A620 against JPEGs from the Sony a6700
+using its FL look. It combines a custom RGB tone curve with Canon Custom Color at saturation −1.
+
+On a card with Sony-CFL installed, open **EXCCD+ → Show All Film Recipes** in ALT mode and
+select **Sony-CFL**. It also appears in **Select Only Presets** when listed in `CHDK/FILMS/FILMS.BAK`.
+
+To add Sony-CFL to a fresh card, run `python tools/filmsim/make_curves.py <output-dir>` from
+the repository and copy `SONYCFL.CV`, `SONYCFL1.CV` and `SONYCFL2.CV` to `CHDK/CURVES/`.
+The last two files are the DR+1 and DR+2 variants. Append this row to `CHDK/FILMS/FILMS.TXT`
+(copy `CHDK/FILMS/EXAMPLE.TXT` as a starting point if needed), then restart the camera.
+
+```text
+Sony-CFL | 11 | 0 | 0 | -1 | 0 | 0 | 0 | 0 | SONYCFL.CV | - | 0
+```
+
 ## Installation
 
-The easy way is the download page (GitHub Pages of this repository): pick your camera and
-looks, download the ZIP and follow the step-by-step guide there. In short:
-
-1. Check the firmware version. The Windows installer can do it (*Check firmware…*), or copy
-   `ver.req` and `vers.req` to the card and press *FUNC/SET + DISP* in playback mode.
-2. Format the SD card **in the camera**. IXUS 60 and SX110 only start EXCCD automatically from
-   cards up to 2 GB, IXUS 132/145 from cards up to 32 GB.
-3. Run `exccd-installer.exe` (from the page or the [Releases](../../releases)): it unpacks the
-   ZIP and makes the card bootable. It is not signed, so Windows asks *More info → Run anyway*.
-4. Lock the card's write-protect switch and put it in the camera.
-
-Without the installer (macOS, Linux): delete an old `CHDK` folder, unpack the ZIP to the top
-level of the card and, on the IXUS 60, start EXCCD in playback mode with *MENU → Firm Update*.
-*MENU → System → Make Card Bootable...* then makes it start on its own from a locked card.
-
-EXCCD runs from the SD card only. Nothing is written to the camera's firmware; without the
-card the camera is unchanged.
+Use the build for your camera model and firmware version, for example
+`dist/v1.0.0/exccd-plus-v1.0.0-a620-100f-full.zip` for the A620 1.00f. Extract it to the root of
+the SD card. On the A620, start manually in playback with **MENU → Firm Update**. For
+autostart, use **EXCCD+ → System → Make Card Bootable...**, then lock the SD card and restart.
 
 ## Usage
 
-| Button | In shooting mode |
+On the A620, a short press of **Print** toggles ALT in shooting or playback. Use **MENU** in
+ALT to open the original CHDK main menu, or **FUNC/SET** to open the script menu directly.
+Choose **Load Script from File...**, select a Lua or uBASIC script in `CHDK/SCRIPTS`, and
+press the shutter fully in ALT to run it. `QUICKISO.LUA` is included in that folder.
+
+To choose a look, enter ALT in still-photo mode and go to **MENU → EXCCD+ → Film selection...**.
+
+- **Show All Film Recipes** opens the film picker with the full `FILMS.TXT` catalogue, or the 26 built-in looks if that file is absent.
+- **Select Only Presets** opens the same picker with the looks in `CHDK/FILMS/FILMS.BAK`.
+  Both lists include **Off**. The last list you choose becomes the default for **Film selection...**
+  and the quick-open button. Choosing a list keeps the active look until you select another.
+- On the **A620 only**, a single **Left** press opens the film picker and a single **Right** press
+  opens **Quick ISO** from the Canon shooting screen. In **ALT → FUNC/SET**, set **EXCCD+ Quick Open Button**
+  and **Quick ISO Button** to **Left**, **Right**, or **None**. A button can belong to only one shortcut.
+  To swap them, set one to **None**, remap the other, and then assign the free button.
+- On the **A620**, in **Quick ISO**, use Left and Right to change the selection. Press **FUNC/SET** or half-press
+  the shutter to apply, or press **MENU** to cancel. The picker is available in **P**, **Tv**,
+  **Av**, and **M**. When the shortcut is disabled, use **MENU → EXCCD+ → Quick ISO...** in ALT.
+
+| Button | In the film picker |
 |---|---|
-| **Print** | Open the film selection with the active look, press again to close without changes |
 | Left/right | Flip through the looks |
-| Up/down | Jump five looks |
-| **FUNC/SET** | Apply the look and close |
-| **MENU** | Options (recipes, look settings, camera settings, raw, system) |
+| Up/down | Jump five looks in the full catalogue or move one look in a short preset list |
+| **FUNC/SET** | Apply the look and return to shooting |
+| **MENU** | Return to the EXCCD+ options |
+| **Print** | Leave ALT |
 
 The film selection shows the keys at the bottom (*SET OK, MENU Options*). The Options menu is
 grouped like this:
@@ -140,88 +157,17 @@ format). `wb = keep` leaves the camera's white balance as it is. Mistakes in the
 unreadable, card full). Saving on the camera rewrites the file, so your own comments in it
 are lost.
 
-## Building
+## Camera build requirements
 
-Toolchain: [xPack GNU Arm Embedded GCC 10.3.1-2.3](https://github.com/xpack-dev-tools/arm-none-eabi-gcc-xpack/releases/tag/v10.3.1-2.3),
-a host GCC, GNU make and Info-ZIP `zip`.
-
-```sh
-export PATH=/path/to/xpack-arm-none-eabi-gcc-10.3.1-2.3/bin:$PATH
-tools/filmsim/build.sh                  # every camera in tools/filmsim/cameras.txt
-tools/filmsim/build.sh ixus60_sd600     # one camera
-```
-
-Result: `dist/<version>/exccd-<version>-<platform>-<sub>-full.zip`, next to the build logs. The script runs `make clean`
-before and after each camera, because CHDK shares the object files in `core/`, `lib/` and
-`modules/` between all platforms.
-
-On Windows, keep LF line endings. The repository's `.gitattributes` takes care of that;
-an older checkout with `core.autocrlf=true` will not build.
-
-Tests on the PC, for the `FILMS.TXT` parser and for the raw codec and 12-bit curves
-(`core/filmsim_raw.h`, checked against CHDK's `get_raw_pixel`/`set_raw_pixel`):
-
-```sh
-gcc -Wall -Wextra -I core -o test_films_txt tools/filmsim/test_films_txt.c core/filmsim_txt.c
-./test_films_txt CHDK/FILMS/EXAMPLE.TXT
-gcc -Wall -Wextra -I core -DCAM_SENSOR_BITS_PER_PIXEL=10 -o test_raw10 tools/filmsim/test_raw.c && ./test_raw10
-gcc -Wall -Wextra -I core -DCAM_SENSOR_BITS_PER_PIXEL=12 -o test_raw12 tools/filmsim/test_raw.c && ./test_raw12
-```
-
-To measure the processing time per shot on a camera, put an empty file `A/CHDK/FILMTIME.CSV` on the
-card. EXCCD then adds one line per shot with the time of each step in ms and the free memory before
-and after (total, largest block, number of blocks, in KB); without the file nothing is written.
-A largest block that keeps shrinking over many shots means the memory is fragmenting.
-
-When a core change must not touch another camera, `tools/filmsim/compare_build.sh <git-ref> <platform>`
-builds both states with the same version and timestamp and compares `main.bin` and every object file.
-
-GitHub Actions builds every push, one job per camera in `tools/filmsim/cameras.txt`; each job
-builds all firmware versions listed there for that camera (`tools/filmsim/build.sh`).
-A tag `vX.Y.Z` that matches `FILMSIM_VERSION` in `core/filmsim.h` creates a release with the
-ZIPs of the cameras marked `stabil` (only their first, tested firmware) and publishes the
-download page on GitHub Pages.
-
-The download page is static. `tools/site/build_site.py` splits the firmware ZIPs into one base
-ZIP per firmware and one small ZIP per look; the browser copies the chosen entries into a new ZIP
-and adds a matching `FILMS.TXT`, without a build per download. It takes one ZIP per camera and
-firmware and shows all cameras with a search field; cameras marked `test` appear as beta, and
-the visitor picks the firmware version. To try it locally:
-
-```sh
-python tools/site/build_site.py dist/v1.10.0/*.zip _site
-python -m http.server -d _site
-```
-
-### Where things are
-
-| Path | Content |
-|---|---|
-| `core/filmsim.c` | Film selection, look logic, OSD |
-| `core/filmsim_raw.h` | Raw codec (10/12 bit) and 12-bit tone curves, also used by the PC test |
-| `core/filmsim_txt.c` | Parser for `A/CHDK/FILMS/FILMS.TXT` |
-| `platform/<camera>/platform_camera.h` | CHDK camera settings; block `EXCCD` with the `FILMSIM_*` switches |
-| `tools/filmsim/cameras.txt` | Cameras EXCCD is built for, with status `stabil` or `test` |
-| `tools/filmsim/cams/<camera>/` | Per camera: palette, notes, camera test; [porting guide](tools/filmsim/cams/README.md) |
-| `CHDK/CURVES/`, `CHDK/FILMS/` | Curves, labels and film table of the looks |
-| `tools/filmsim/` | Generators for curves (`make_curves.py`) and labels (`make_label_art.py`, `make_labels.py`) |
-| `site/`, `tools/site/` | Download page: pick looks, the browser assembles the ZIP for the SD card |
-
-The first commit of this repository is unchanged CHDK 1.6.1 (GitHub mirror
-[petabyt/chdk](https://github.com/petabyt/chdk), commit `ad402e1`, path
-`branches/release-1_6`, SVN r6307). A diff against that commit shows every EXCCD change:
-
-```sh
-git diff $(git rev-list --max-parents=0 HEAD) HEAD
-```
-
-## Contributing
-
-Bug reports, test results and pull requests are welcome. For a bug, please open an issue with
-the camera, firmware, EXCCD version and, if possible, a photo (a photo of the display helps too).
-New camera models are especially welcome: [`tools/filmsim/cams/README.md`](tools/filmsim/cams/README.md)
-describes what a port needs. Code comments and internal notes are partly in German; English
-issues and pull requests are perfectly fine.
+- Your exact Canon model and firmware revision. The [camera list](tools/filmsim/cameras.txt)
+  shows the configured EXCCD+ targets and firmware versions.
+- A CHDK 1.6.1 port for that model and firmware, plus an EXCCD+ target entry if it is missing
+  from the list. The film engine supports 10-bit and 12-bit RAW with RGGB or GBRG Bayer patterns.
+  Other sensor formats need film-engine support. See the
+  [camera porting guide](tools/filmsim/cams/README.md).
+- A POSIX shell with host GCC, GNU make, Info-ZIP `zip`, and
+  [xPack GNU Arm Embedded GCC 10.3.1-2.3](https://github.com/xpack-dev-tools/arm-none-eabi-gcc-xpack/releases/tag/v10.3.1-2.3)
+  available on `PATH`. On Windows, WSL provides the shell environment.
 
 ## License
 
@@ -234,8 +180,8 @@ The original CHDK readme is in [`README.CHDK`](README.CHDK).
 
 ## Disclaimer
 
-EXCCD is an independent project. It is not affiliated with, endorsed by or sponsored by
+EXCCD+ is an independent project. It is not affiliated with, endorsed by or sponsored by
 Canon Inc. Canon, IXUS and PowerShot are trademarks of Canon Inc. and are used only to
 name the supported camera.
 
-Use at your own risk. CHDK and EXCCD come without any warranty (see `COPYING`).
+Use at your own risk. CHDK and EXCCD+ come without any warranty (see `COPYING`).

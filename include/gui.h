@@ -33,6 +33,8 @@ enum ALT_Mode_State {
     ALT_MODE_ENTER,         // enter ALT mode
     ALT_MODE_ENTER_SCRIPT,  // enter SCRIPT mode
     ALT_MODE_LEAVE,         // leave ALT mode
+    ALT_MODE_ENTER_FILM,
+    ALT_MODE_ENTER_ISO,
 };
 
 extern void gui_set_alt_mode_state(int);    // Called from KBD task to tell GUI task what state to set
@@ -80,6 +82,7 @@ extern void gui_set_need_restore();
 extern void gui_cancel_need_restore();
 
 extern gui_handler* gui_set_mode(gui_handler *mode);
+extern int gui_is_mode(const gui_handler *mode);
 extern void gui_reset_alt_helper();
 
 extern void gui_enum_value_change(int *value, int change, unsigned num_items);
