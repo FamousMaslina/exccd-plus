@@ -726,7 +726,7 @@ void capture_data_for_exif(void)
     struct tm *ttm;
     int wb[3];
 
-    exif_data.iso=shooting_get_iso_market();
+    exif_data.iso=raw_get_capture_iso();
 
     // Shutter speed tags
     get_property_case(camera_info.props.tv, &short_prop_val, sizeof(short_prop_val));

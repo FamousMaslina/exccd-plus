@@ -2,7 +2,7 @@
 # EXCCD+
 <img width="900" height="300" alt="exccdplus" src="https://github.com/user-attachments/assets/167387f4-b2bd-4155-afc7-9e13be0f9175" />
 
-EXCCD+ v1.0.0 combines the original [CHDK](https://chdk.fandom.com/) menu and script loader
+EXCCD+ v1.0.2 combines the original [CHDK](https://chdk.fandom.com/) menu and script loader
 with the film looks from [EXCCD v1.10.2](https://github.com/35mmSebas/exccd). Each look
 combines Canon's *My Colors* settings with a tone curve applied before the camera creates the JPEG.
 
@@ -18,7 +18,10 @@ firmware version, and any test results.
 |---|---|---|
 | PowerShot A620 | 1.00f | Primary EXCCD+ build target |
 
+## What's new
 
+- **v1.0.2** Always export the ISO used for the exposure in JPEG and DNG EXIF, including Auto ISO.
+- **v1.0.1** Show a custom EXCCD+ splash screen on boot.
 
 ## Looks
 
@@ -75,7 +78,7 @@ Sony-CFL | 11 | 0 | 0 | -1 | 0 | 0 | 0 | 0 | SONYCFL.CV | - | 0
 ## Installation
 
 Use the build for your camera model and firmware version, for example
-`dist/v1.0.0/exccd-plus-v1.0.0-a620-100f-full.zip` for the A620 1.00f. Extract it to the root of
+`dist/v1.0.2/exccd-plus-v1.0.2-a620-100f-full.zip` for the A620 1.00f. Extract it to the root of
 the SD card. On the A620, start manually in playback with **MENU → Firm Update**. For
 autostart, use **EXCCD+ → System → Make Card Bootable...**, then lock the SD card and restart.
 
@@ -130,10 +133,11 @@ photo: what is in front of the lens does not matter, the camera only needs a sho
 JPEG engine. The status line shows `Develop <file>: <look>` until then; choose RAW develop
 again to cancel. You get a new JPEG. The DNG stays untouched, your loaded look comes back.
 
-White balance, Dynamic+ level, date stamp and Auto colour noise filter come from the original
-photo. The JPEG's Exif data (date, exposure, orientation) comes from the helper shot, so hold
-the camera the same way and do not use digital zoom. `FILMLOG.CSV` names the source file in a
-third column. Canon's JPEG engine only runs after a shot, so this cannot run in playback mode.
+White balance, ISO, Dynamic+ level, date stamp and Auto colour noise filter come from the original
+photo when available. The JPEG's other Exif data (date, shutter speed, aperture, orientation)
+comes from the helper shot, so hold the camera the same way and do not use digital zoom.
+`FILMLOG.CSV` names the source file in a third column. Canon's JPEG engine only runs after
+a shot, so this cannot run in playback mode.
 
 **Deleting RAW files** (Options → RAW): Canon's own delete only removes the JPEG, so DNGs pile up
 on the card. *Delete RAW...* opens the same browser as RAW develop; SET deletes the DNG under the

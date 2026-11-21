@@ -151,6 +151,7 @@ extern short shooting_get_sv96_real();
 extern short shooting_get_sv96_market();
 extern short shooting_get_iso_market();
 extern short shooting_get_iso_real();
+extern short shooting_get_capture_iso(void);
 extern void shooting_set_iso_real(short iso, short is_now);
 extern void shooting_set_sv96(short sv96, short is_now);
 extern short shooting_get_iso_override_value();

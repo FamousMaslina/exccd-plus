@@ -1,6 +1,10 @@
 #include "stdlib.h" // for NULL
+#include "string.h"
 
 #include "remotecap_core.h"
+#include "cache.h"
+#include "cachebit.h"
+#include "jpeg_iso.h"
 static int ignore_current_write=0; //used by the platform routine to check whether to write the current file
 #ifdef CAM_DRYOS
 static long fwt_bytes_written = 0; // need to track this independently of ptp
@@ -158,6 +162,15 @@ void filewrite_main_hook(fwt_data_struct *fwt_data)
 #endif // CAM_FILEWRITETASK_MULTIPASS
 
     file_chunks = &(fwt_data->pdc[0]);
+#ifdef CAM_FILEWRITETASK_SEEKS
+    if (fwt_data->file_offset == 0)
+#endif
+    {
+        unsigned char *jpeg = (unsigned char *)file_chunks[0].address;
+        if (jpeg && memchr(fwt_data->name, 0, sizeof(fwt_data->name)) &&
+            jpeg_iso_filewrite(fwt_data->name, jpeg, file_chunks[0].length) && ADR_IS_CACHED(jpeg))
+            dcache_clean_all();
+    }
 #ifdef CAM_HAS_CANON_RAW
     // for raw enabled cameras, get format from extension
     // A/DCIM/100CANON/IMG_1234.CR2

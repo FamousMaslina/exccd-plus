@@ -193,6 +193,7 @@
             raw_createfile
             raw_closefile
             raw_get_path
+            raw_get_capture_iso
 
             kbd_get_autoclicked_key
             kbd_is_key_pressed

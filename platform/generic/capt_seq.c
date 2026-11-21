@@ -16,21 +16,16 @@
 
 static long raw_save_stage;
 
-#include "remotecap_core.h"
-
 void __attribute__((naked,noinline)) capt_seq_hook_raw_here()
 {
  asm volatile("STMFD   SP!, {R0-R12,LR}\n");
 
 #ifdef PAUSE_FOR_FILE_COUNTER
     // Some cameras need a slight delay for the file counter to be updated correctly
-    // before raw_savefile tries to get the file name & directory.
+    // before RAW saving, JPEG metadata or remote capture uses the filename.
     // Add '#define PAUSE_FOR_FILE_COUNTER 100' in the camera firmware capt_seq.c file.
     // The value can be adjusted as needed for different cameras.
 
-    if ((conf.save_raw && is_raw_enabled()) // Only delay if RAW enabled (prevents slowdown in HQ burst mode)
-        || (remotecap_get_target()) //... or if remote shooting is active
-    )
     {
         int fc = get_file_counter();
         int tc = get_tick_count() + PAUSE_FOR_FILE_COUNTER;

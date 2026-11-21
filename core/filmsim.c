@@ -699,11 +699,16 @@ static void dev_tick(void)
 //     Dynamik+:       die Aufhell-Kurve gehoert zur Aufnahme, nicht zur Menueeinstellung
 //     Farbrauschen:   Auto richtet sich nach der ISO der Aufnahme
 //     Datum:          der Datumsstempel zeigt den Aufnahmetag
-//   Exif-Daten und Ausrichtung im JPEG kann EXCCD nicht aendern, die kommen vom Hilfsschuss.
+//   JPEGs uebernehmen die ISO aus dem DNG; die anderen Exif-Daten kommen vom Hilfsschuss.
 //-------------------------------------------------------------------
 int filmsim_develop_armed(void)
 {
     return dev_armed;
+}
+
+int filmsim_develop_iso(void)
+{
+    return dev_armed && dev_has_meta ? dev_meta.iso : 0;
 }
 
 // Passt die Datei zu dieser Kamera? Liest auch die Aufnahmedaten.
@@ -964,11 +969,11 @@ static void label_free(void)
 #ifdef FILMSIM_LABELS
 #define LABEL_EXT       ".FLM"
 #define LABEL_MAGIC     "FLM1"
-#define LABEL_COLOR(c)  (c)
+#define LABEL_CHDK_PALETTE 0
 #else
 #define LABEL_EXT       ".FLC"
 #define LABEL_MAGIC     "FLC1"
-#define LABEL_COLOR(c)  (chdk_colors[(c) <= IDX_COLOR_MAX ? (c) : IDX_COLOR_GREY])
+#define LABEL_CHDK_PALETTE 1
 #endif
 
 static void label_load(int i)
@@ -992,6 +997,24 @@ static void label_load(int i)
     if (label_len < 8 || memcmp(label_buf, LABEL_MAGIC, 4) != 0) { label_free(); label_for = i; }
 }
 
+static void draw_film_bitmap(const unsigned char *data, int len, int w, int h,
+                             int ox, int oy, int chdk_palette)
+{
+    int x = 0, y = 0, p = 8;
+    while (p + 1 < len && y < h) {
+        int n = data[p], c = data[p + 1];
+        p += 2;
+        color pixel = chdk_palette ? chdk_colors[c <= IDX_COLOR_MAX ? c : IDX_COLOR_GREY] : c;
+        while (n > 0 && y < h) {
+            int run = w - x;
+            if (run > n) run = n;
+            if (c) draw_hline(ox + x, oy + y, run, pixel);
+            x += run; n -= run;
+            if (x >= w) { x = 0; y++; }
+        }
+    }
+}
+
 // RLE-Lasche zeichnen; 0 = keine Datei
 static int label_draw(void)
 {
@@ -1001,18 +1024,7 @@ static int label_draw(void)
     if (w <= 0 || h <= 0 || w > camera_screen.width || h > LABEL_H) return 0;
     int ox = (camera_screen.width - w) / 2;
     int oy = LABEL_TOP + (LABEL_H - h) / 2;
-    int x = 0, y = 0, p = 8;
-    while (p + 1 < label_len && y < h) {
-        int n = label_buf[p], c = label_buf[p + 1];
-        p += 2;
-        while (n > 0 && y < h) {
-            int run = w - x;
-            if (run > n) run = n;
-            if (c) draw_hline(ox + x, oy + y, run, LABEL_COLOR(c));
-            x += run; n -= run;
-            if (x >= w) { x = 0; y++; }
-        }
-    }
+    draw_film_bitmap(label_buf, label_len, w, h, ox, oy, LABEL_CHDK_PALETTE);
     return 1;
 }
 
@@ -1556,31 +1568,32 @@ void filmsim_raw_apply(__attribute__ ((unused))char *raw) {}
 #endif
 
 //-------------------------------------------------------------------
-// Startbildschirm (A/CHDK/FILMS/SPLASH.FLM)
-//   Wird einmal in den Speicher geladen und von dort gezeichnet - schnell
-//   genug, dass Neuzeichnen (wenn Canon beim Start den Schirm loescht)
-//   kaum flackert. Es gibt KEIN CHDK-Logo mehr als Ersatz.
+// Startup logo stored as an FLC bitmap so CHDK supplies the camera palette.
 //-------------------------------------------------------------------
 static unsigned char *splash_buf = 0;
 static int splash_len = 0;
 
-static void splash_load(void)
+int filmsim_splash_init(void)
 {
-    const char *fn = "A/CHDK/FILMS/SPLASH.FLM";
+    const char *fn = "A/CHDK/FILMS/SPLASH.FLC";
     struct stat st;
-#ifndef FILMSIM_LABELS
-    return;
-#endif
-    if (splash_buf) return;
-    if (stat(fn, &st) != 0 || st.st_size < 8 || st.st_size > 120000) return;
+    if (splash_buf) return 1;
+    if (stat(fn, &st) != 0 || st.st_size < 10 || st.st_size > 120000 || (st.st_size & 1)) return 0;
     unsigned char *b = malloc(st.st_size);
-    if (!b) return;
+    if (!b) return 0;
     int fd = open(fn, O_RDONLY, 0777);
-    if (fd < 0) { free(b); return; }
+    if (fd < 0) { free(b); return 0; }
     int len = read(fd, b, st.st_size);
     close(fd);
-    if (len < 8 || memcmp(b, "FLM1", 4) != 0) { free(b); return; }
+    if (len != st.st_size || memcmp(b, "FLC1", 4) != 0) { free(b); return 0; }
+    int w = b[4] | (b[5] << 8);
+    int h = b[6] | (b[7] << 8);
+    if (w <= 0 || h <= 0 || w > camera_screen.width || h > camera_screen.height) { free(b); return 0; }
+    int pixels = 0;
+    for (int p = 8; p < len; p += 2) pixels += b[p];
+    if (pixels != w * h) { free(b); return 0; }
     splash_buf = b; splash_len = len;
+    return 1;
 }
 
 void filmsim_splash_free(void)
@@ -1589,36 +1602,16 @@ void filmsim_splash_free(void)
     splash_buf = 0; splash_len = 0;
 }
 
-void filmsim_splash_init(void)
+void filmsim_draw_splash(void)
 {
-    splash_load();
-}
-
-// Rueckgabe immer 1: CHDK-Logo nie zeichnen
-int filmsim_draw_splash(void)
-{
-    splash_load();                       // falls die Karte beim Start noch nicht bereit war
-    if (!splash_buf) return 1;
-    unsigned char *b = splash_buf;
-    int len = splash_len;
-    int w = b[4] | (b[5] << 8);
-    int h = b[6] | (b[7] << 8);
-    if (w <= 0 || h <= 0 || w > camera_screen.width || h > camera_screen.height) return 1;
+    if (!splash_buf) return;
+    int w = splash_buf[4] | (splash_buf[5] << 8);
+    int h = splash_buf[6] | (splash_buf[7] << 8);
     int ox = (camera_screen.width - w) / 2;
     int oy = (camera_screen.height - h) / 2;
-    int x = 0, y = 0, p = 8;
-    while (p + 1 < len && y < h) {
-        int n = b[p], c = b[p + 1];
-        p += 2;
-        while (n > 0 && y < h) {
-            int run = w - x;
-            if (run > n) run = n;
-            if (c) draw_hline(ox + x, oy + y, run, c);
-            x += run; n -= run;
-            if (x >= w) { x = 0; y++; }
-        }
-    }
-    return 1;
+    draw_rectangle(0, 0, camera_screen.width - 1, camera_screen.height - 1,
+                   MAKE_COLOR(COLOR_BLACK, COLOR_BLACK), RECT_BORDER0|DRAW_FILLED);
+    draw_film_bitmap(splash_buf, splash_len, w, h, ox, oy, 1);
 }
 
 //-------------------------------------------------------------------

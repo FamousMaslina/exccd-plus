@@ -7,6 +7,7 @@
 #include "raw.h"
 #include "console.h"
 #include "shooting.h"
+#include "jpeg_iso.h"
 
 #include "edgeoverlay.h"
 #include "module_load.h"
@@ -339,6 +340,8 @@ void core_spytask()
         {
             camera_info.state.state_shooting_progress = SHOOTING_PROGRESS_DONE;
         }
+
+        jpeg_iso_tick();
 
         i = 0;
 

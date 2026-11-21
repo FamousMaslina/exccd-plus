@@ -6,7 +6,7 @@
 // RAW-Tonkurven (curves.flt) zu waehlbaren Looks.
 
 #define FILMSIM_PRODUCT_NAME "EXCCD+"
-#define FILMSIM_VERSION "v1.0.0"
+#define FILMSIM_VERSION "v1.0.2"
 
 extern const char* filmsim_menu_enum(int change, int arg);
 extern const char* filmsim_name(void);
@@ -17,6 +17,9 @@ extern void filmsim_set(int v);
 extern void filmsim_open_menu(void);
 extern void filmsim_open_catalog(int presets);
 extern void filmsim_label_release(void);
+extern int filmsim_splash_init(void);
+extern void filmsim_draw_splash(void);
+extern void filmsim_splash_free(void);
 extern int filmsim_quick_mode(int key);
 extern int filmsim_quick_iso_open(void);
 extern void filmsim_normalize_quick_buttons(void);
@@ -34,6 +37,7 @@ extern const char* filmsim_datestamp_enum(int change, int arg);
 extern const char* filmsim_grain_enum(int change, int arg);
 extern const char* filmsim_frame_enum(int change, int arg);
 extern int filmsim_develop_armed(void);
+extern int filmsim_develop_iso(void);
 extern void filmsim_develop_select(const char *fn);
 extern void filmsim_develop_cancel(void);
 extern void filmsim_develop_begin(char *raw);

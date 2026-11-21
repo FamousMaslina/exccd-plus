@@ -13,6 +13,7 @@
 #include "ptp.h" // for remotecap constants
 #include "script_api.h" // for script hook
 #include "filmsim.h"
+#include "jpeg_iso.h"
 
 //-------------------------------------------------------------------
 #ifdef CAM_DATE_FOLDER_NAMING
@@ -154,6 +155,12 @@ void raw_closefile(int fd)
 // Set in raw_process and used in get_raw_pixel & set_raw_pixel (for performance)
 // Don't call set/get_raw_pixel until this value is initialised
 static char *rawadr;    // Pointer to current raw image buffer
+static short capture_iso;
+
+short raw_get_capture_iso(void)
+{
+    return capture_iso;
+}
 
 // handle actual raw / dng saving to SD
 // returns 1 on successful save, otherwise 0
@@ -190,6 +197,11 @@ static int raw_savefile(char *rawadr, char *altrawadr) {
 // processing done when raw hook runs available
 void raw_process(void)
 {
+    // Snapshot the completed exposure before script hooks or bracketing run.
+    capture_iso = shooting_get_capture_iso();
+    int source_iso = filmsim_develop_iso();
+    jpeg_iso_capture(source_iso > 0 ? source_iso : capture_iso);
+
     // Get pointers to RAW buffers (will be the same on cameras that don't have two or more buffers)
     rawadr = get_raw_image_addr();
     char *altrawadr = get_alt_raw_image_addr();

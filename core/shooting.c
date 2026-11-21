@@ -490,6 +490,22 @@ short shooting_get_iso_market()
     return shooting_get_iso_from_sv96(sv);
 }
 
+short shooting_get_capture_iso(void)
+{
+    // Use the shot's measured sensitivity on the camera's ISO scale, including
+    // Auto ISO and overrides. ISO_MODE only describes the selected menu option.
+    short base = shooting_get_sv96_market();
+    short sv = base + shooting_get_sv96_delta();
+    if (base > 0 && sv > 0)
+        return shooting_get_iso_from_sv96(sv);
+
+    sv = shooting_get_sv96_real();
+    if (sv > 0)
+        return shooting_get_iso_from_sv96(shooting_sv96_real_to_market(sv));
+
+    return shooting_get_iso_mode() > 0 ? shooting_get_canon_iso_mode() : 0;
+}
+
 static void set_iso_mode(int i)
 {
     short vv = iso_table[i].prop_id;

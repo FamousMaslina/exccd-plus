@@ -2610,19 +2610,9 @@ const char* gui_histo_show_enum(int change, __attribute__ ((unused))int arg)
 // Splash screen handling
 
 
-#if defined(VER_CHDK)
-#define LOGO_WIDTH  149
-#define LOGO_HEIGHT 84
-#else
-#define LOGO_WIDTH  169
-#define LOGO_HEIGHT 74
-#endif
-
 static int gui_splash;
-static char *logo = NULL;
-static int logo_size, logo_text_width, logo_text_height;
 
-static void init_splash()
+static void init_splash(void)
 {
     int i = 0, index = 0;
     while (index < (int)sizeof(text_raw))
@@ -2631,123 +2621,33 @@ static void init_splash()
         while (text_raw[index++]) ;
     }
 
-    gui_splash = 0;     // Filmsim-Firmware: kein Startbild (schnellerer, ruhiger Start)
-
-    if (gui_splash)
-    {
-        // Filmsim-Firmware: eigenes Startbild statt CHDK-Logo
-        extern void filmsim_splash_init(void);
-        filmsim_splash_init();
-        logo = NULL;
-
-        logo_text_height = TEXT_COUNT - 1;
-        logo_text_width = 0;
-
-        int i;
-        for (i=0; i<logo_text_height; ++i)
-        {
-            int l = strlen(text[i]);
-            if (l > logo_text_width) logo_text_width = l;
-        }
-
-        logo_text_width = logo_text_width * FONT_WIDTH + 10;
-        logo_text_height = logo_text_height * FONT_HEIGHT + 8;
-    }
+    gui_splash = conf.splash_show && filmsim_splash_init() ? SPLASH_TIME : 0;
 }
 
-static void gui_draw_splash()
+static int gui_handle_splash(int force_redraw)
 {
-    coord x, y;
-    int i;
+    if (!gui_splash) return 0;
 
-    // Filmsim-Firmware: eigener Startbildschirm, falls vorhanden
-    extern int filmsim_draw_splash(void);
-    if (filmsim_draw_splash()) return;
-    twoColors cl = MAKE_COLOR(COLOR_RED, COLOR_WHITE);
-
-    const color logo_colors[8] =
+    int show_splash = camera_info.state.gui_mode_none || camera_info.state.gui_mode_alt;
+    if (!show_splash || kbd_is_key_pressed(KEY_SHOOT_HALF) ||
+        kbd_is_key_pressed(KEY_ZOOM_IN) || kbd_is_key_pressed(KEY_ZOOM_OUT))
     {
-        COLOR_BLACK,
-        COLOR_RED_DK,
-        COLOR_RED,
-        COLOR_GREY,
-        COLOR_GREY_LT,
-        COLOR_RED_LT,
-        COLOR_TRANSPARENT,
-        COLOR_WHITE
-    };
-
-    x = (camera_screen.width-logo_text_width)>>1; 
-    y = ((camera_screen.height-logo_text_height)>>1) + 20;
-
-    draw_rectangle(x, y, x+logo_text_width, y+logo_text_height, MAKE_COLOR(COLOR_RED, COLOR_RED), RECT_BORDER0|DRAW_FILLED|RECT_ROUND_CORNERS);
-    for (i=0; i<TEXT_COUNT-1; ++i)
-    {
-        draw_string(x+((logo_text_width-strlen(text[i])*FONT_WIDTH)>>1), y+i*FONT_HEIGHT+4, text[i], cl);
+        gui_splash = 1;
     }
-
-#if OPT_EXPIRE_TEST
-    do_expire_splash(x+((logo_text_width)>>1),y+(i+1)*FONT_HEIGHT+4);
+    else if (force_redraw || gui_splash == SPLASH_TIME)
+    {
+        filmsim_draw_splash();
+#ifdef OPT_EXPIRE_TEST
+        do_expire_splash(camera_screen.width / 2, camera_screen.height - 2 * FONT_HEIGHT);
 #endif
-
-    if (logo)
-    {
-        int pos;
-        int mx = 0;
-        int my = 0;
-        int offset_x = (camera_screen.width-LOGO_WIDTH)>>1;
-#ifdef THUMB_FW
-        int offset_y = ((camera_screen.height-LOGO_HEIGHT)>>1) - 66 ;
-#else
-        int offset_y = ((camera_screen.height-LOGO_HEIGHT)>>1) - 42 ;
-#endif
-        for (pos=0; pos<logo_size; pos++)
-        {
-            char data = logo[pos];
-            color c = logo_colors[(data>>5) & 0x07];
-            for (i=0; i<(data&0x1F)+1; i++)
-            {
-                if (c!=0x00)
-                {
-                    draw_pixel(offset_x+mx,offset_y+my,c);
-                }
-                if (mx == LOGO_WIDTH)
-                {
-                    mx = 0;
-                    my++;
-                }
-                else
-                {
-                    mx++;
-                }     
-            }
-        }
     }
-}
 
-static void gui_handle_splash(int force_redraw)
-{
-    if (gui_splash)
+    if (--gui_splash == 0)
     {
-        if (camera_info.state.gui_mode_none || camera_info.state.gui_mode_alt)
-            if (force_redraw || (gui_splash == SPLASH_TIME))
-                gui_draw_splash();
-
-        // on half shoot or zoom, cancel splash screen
-        if(kbd_is_key_pressed(KEY_SHOOT_HALF) || kbd_is_key_pressed(KEY_ZOOM_IN) || kbd_is_key_pressed(KEY_ZOOM_OUT)) {
-            gui_splash = 1;
-        }
-        if (--gui_splash == 0)
-        {
-            if (camera_info.state.gui_mode_none || camera_info.state.gui_mode_alt)
-                gui_set_need_restore();
-            if (logo)
-                free(logo);
-            logo = NULL;
-            extern void filmsim_splash_free(void);
-            filmsim_splash_free();
-        }
+        filmsim_splash_free();
+        gui_set_need_restore();
     }
+    return show_splash;
 }
 
 //-------------------------------------------------------------------
@@ -3348,7 +3248,7 @@ void gui_redraw()
     do_expire_check();
 #endif
 
-    gui_handle_splash(flag_gui_enforce_redraw);
+    if (gui_handle_splash(flag_gui_enforce_redraw)) return;
 
     // visible warning if modules missing
     gui_draw_no_module_warning();
