@@ -110,9 +110,11 @@ FUNC ref=0
 ASM
 FW 12
 PATCHSUB ref=0
-FW $-1
+FW 10
 >>>
-"    BL      fwt_after_close\n" //+
+"    MOV     R0, R4\n"
+"    BL      fwt_after_close\n"
+"    MOV     R1, #1\n"
 <<<
 FW $
 ENDASM

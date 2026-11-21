@@ -563,6 +563,7 @@ static ConfInfo conf_info[] = {
     CONF_INFO(274, conf.film_presets_only,                      CONF_DEF_VALUE, i:0),
     CONF_INFO(275, conf.film_quick_button,                       CONF_DEF_VALUE, i:1),
     CONF_INFO(276, conf.iso_quick_button,                        CONF_DEF_VALUE, i:2),
+    CONF_INFO(277, conf.film_save_original_jpeg,                CONF_DEF_VALUE, i:0),
 
     CONF_INFO(999, conf.script_allow_lua_native_calls,          CONF_DEF_VALUE, i:0),
 

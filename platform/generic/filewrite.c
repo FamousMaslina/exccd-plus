@@ -5,6 +5,7 @@
 #include "cache.h"
 #include "cachebit.h"
 #include "jpeg_iso.h"
+#include "filmsim.h"
 static int ignore_current_write=0; //used by the platform routine to check whether to write the current file
 #ifdef CAM_DRYOS
 static long fwt_bytes_written = 0; // need to track this independently of ptp
@@ -162,6 +163,10 @@ void filewrite_main_hook(fwt_data_struct *fwt_data)
 #endif // CAM_FILEWRITETASK_MULTIPASS
 
     file_chunks = &(fwt_data->pdc[0]);
+#ifdef FILMSIM_JPEG_PAIR
+    if (memchr(fwt_data->name, 0, sizeof(fwt_data->name)))
+        filmsim_pair_filewrite(fwt_data->name);
+#endif
 #ifdef CAM_FILEWRITETASK_SEEKS
     if (fwt_data->file_offset == 0)
 #endif
@@ -258,6 +263,9 @@ int fwt_close (int fd) {
  */
 int fwt_after_close (int param) {
 //    imagesavecomplete=1;
+#ifdef FILMSIM_JPEG_PAIR
+    filmsim_pair_file_closed();
+#endif
     return param;
 }
 #endif //CAM_DRYOS

@@ -115,6 +115,9 @@ asm volatile (
 "    CMP     R4, #0 \n"
 "    MOV     R1, #1 \n"
 "    LDMEQFD SP!, {R4,R5,PC} \n"
+"    MOV     R0, R4\n"
+"    BL      fwt_after_close\n"
+"    MOV     R1, #1\n"
 "    LDR     R3, =0x1CBA4 \n"
 "    LDR     R0, [R3] \n"
 "    BL      sub_FFC0FA40 /*_ClearEventFlag*/ \n"
@@ -131,7 +134,6 @@ asm volatile (
 "    LDMEQFD SP!, {R4,R5,PC} \n"
 "    MOV     LR, PC \n"
 "    MOV     PC, R5 \n"
-"    BL      fwt_after_close\n" //+
 "    LDMFD   SP!, {R4,R5,PC} \n"
 );
 }

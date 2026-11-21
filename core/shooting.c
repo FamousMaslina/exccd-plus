@@ -7,6 +7,7 @@
 #include "autoiso.h"
 #include "levent.h"
 #include "script_api.h"
+#include "filmsim.h"
 
 // Shooting function that don't need to be ARM code
 // ARM code shooting functions are in platform/generic/shooting.c
@@ -1895,6 +1896,10 @@ void set_ev_video(int x)
 
 static void shooting_set_flash_override()
 {
+#ifdef FILMSIM_JPEG_PAIR
+    if (filmsim_pair_helper())
+        return;
+#endif
     int mode, flash, power;
     flash = 1;
 
@@ -1927,6 +1932,9 @@ static void shooting_set_flash_override()
 
 void shooting_expo_param_override_thumb(void)
 {
+#ifdef FILMSIM_JPEG_PAIR
+    filmsim_pair_prepare_capture();
+#endif
     extern int filmsim_dr_tv96_shift(int automatic);
     extern int filmsim_autoiso(void);
     if (((camera_info.state.state_kbd_script_run) || (usb_remote_active)) && (photo_param_put_off.tv96 != PHOTO_PARAM_TV_NONE))

@@ -2,7 +2,7 @@
 # EXCCD+
 <img width="900" height="300" alt="exccdplus" src="https://github.com/user-attachments/assets/167387f4-b2bd-4155-afc7-9e13be0f9175" />
 
-EXCCD+ v1.0.2 combines the original [CHDK](https://chdk.fandom.com/) menu and script loader
+EXCCD+ v1.0.3 combines the original [CHDK](https://chdk.fandom.com/) menu and script loader
 with the film looks from [EXCCD v1.10.2](https://github.com/35mmSebas/exccd). Each look
 combines Canon's *My Colors* settings with a tone curve applied before the camera creates the JPEG.
 
@@ -20,6 +20,8 @@ firmware version, and any test results.
 
 ## What's new
 
+- **v1.0.3** Add **Save Original JPEG** on the A620. It saves the original Canon JPEG and a
+  recipe JPEG from the same exposure, both with standard Canon filenames.
 - **v1.0.2** Always export the ISO used for the exposure in JPEG and DNG EXIF, including Auto ISO.
 - **v1.0.1** Show a custom EXCCD+ splash screen on boot.
 
@@ -78,7 +80,7 @@ Sony-CFL | 11 | 0 | 0 | -1 | 0 | 0 | 0 | 0 | SONYCFL.CV | - | 0
 ## Installation
 
 Use the build for your camera model and firmware version, for example
-`dist/v1.0.2/exccd-plus-v1.0.2-a620-100f-full.zip` for the A620 1.00f. Extract it to the root of
+`dist/v1.0.3/exccd-plus-v1.0.3-a620-100f-full.zip` for the A620 1.00f. Extract it to the root of
 the SD card. On the A620, start manually in playback with **MENU → Firm Update**. For
 autostart, use **EXCCD+ → System → Make Card Bootable...**, then lock the SD card and restart.
 
@@ -90,6 +92,13 @@ Choose **Load Script from File...**, select a Lua or uBASIC script in `CHDK/SCRI
 press the shutter fully in ALT to run it. `QUICKISO.LUA` is included in that folder.
 
 To choose a look, enter ALT in still-photo mode and go to **MENU → EXCCD+ → Film selection...**.
+
+On the A620, **MENU → EXCCD+ → Save Original JPEG** is available with a film recipe selected.
+In single-shot drive mode it saves the Canon render first, then automatically takes a helper shot
+to render the first exposure's sensor data with the recipe. Canon numbers the files in sequence,
+for example `IMG_8345.JPG` for the original and `IMG_8346.JPG` for the recipe JPEG.
+The original uses the exposure and Canon white balance of that capture. Release the shutter
+to let the helper shot start. With this setting off, the camera saves one JPEG.
 
 - **Show All Film Recipes** opens the film picker with the full `FILMS.TXT` catalogue, or the 26 built-in looks if that file is absent.
 - **Select Only Presets** opens the same picker with the looks in `CHDK/FILMS/FILMS.BAK`.

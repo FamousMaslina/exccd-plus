@@ -490,6 +490,7 @@ typedef struct
     int film_presets_only;
     int film_quick_button;
     int iso_quick_button;
+    int film_save_original_jpeg;
 
 } Conf;
 

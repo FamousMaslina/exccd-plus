@@ -2525,6 +2525,9 @@ static CMenuItem exccd_menu_items[] = {
 #endif
     MENU_ITEM   (0x5f,LANG_EXCCD_RECIPE,                    MENUITEM_ENUM,      filmsim_recipe_enum, 0 ),
     MENU_ITEM   (0x5f,(int)filmsim_look_text,               MENUITEM_SUBMENU,   &look_submenu, 0 ),
+#ifdef FILMSIM_JPEG_PAIR
+    MENU_ITEM   (0x5c,LANG_EXCCD_SAVE_ORIGINAL_JPEG,         MENUITEM_ENUM,      filmsim_pair_enum, 0 ),
+#endif
     MENU_ITEM   (0x0,(int)"",                               MENUITEM_SEPARATOR, 0, 0 ),
     MENU_ITEM   (0x61,LANG_EXCCD_SHUTTER,                   MENUITEM_ENUM,      gui_filmsim_tv_enum, 0 ),
     MENU_ITEM   (0x61,LANG_EXCCD_AISO,                      MENUITEM_ENUM,      filmsim_aiso_enum, 0 ),

@@ -42,7 +42,10 @@ unsigned char *chdk_colors = host_colors;
 int canon_menu_active = 0;
 char canon_shoot_menu_active = 0;
 CMenu root_menu;
+CMenu exccd_menu;
+int recreview_hold;
 static CMenu *menu_open;                 // zuletzt geoeffnetes CHDK-Menue
+CMenu *get_curr_menu(void) { return menu_open; }
 static void menu_redraw(int f) { (void)f; }
 static int menu_kbd(void) { return 0; }
 gui_handler menuGuiHandler = { .redraw = menu_redraw, .kbd_process = menu_kbd };
@@ -205,6 +208,13 @@ twoColors user_color(confColor c) { (void)c; return 0; }
 
 static gui_handler *cur_mode = 0;
 gui_handler *gui_set_mode(gui_handler *h) { gui_handler *o = cur_mode; cur_mode = h; return o; }
+int gui_is_mode(const gui_handler *h) { return cur_mode == h; }
+void *vid_get_bitmap_active_palette(void) { return NULL; }
+int vid_get_palette_size(void) { return 0; }
+void gui_enum_value_change(int *value, int change, unsigned n)
+{
+    *value = (*value + change + (int)n) % (int)n;
+}
 static int menu_redraws = 0;
 void gui_menu_erase_and_redraw(void) { menu_redraws++; }
 void gui_menu_init(CMenu *m) { menu_open = m; }
@@ -228,6 +238,19 @@ int shooting_in_progress() { return camera_info.state.state_shooting_progress !=
 int shooting_is_flash_ready() { return 1; }
 long kbd_get_pressed_key() { return 0; }
 void kbd_key_release_all() { }
+long kbd_is_key_clicked(long k) { (void)k; return 0; }
+#ifdef FILMSIM_JPEG_PAIR
+static long injected_key;
+static int pair_errors;
+void kbd_key_press(long k) { injected_key = k; }
+void kbd_key_release(long k) { if (injected_key == k) injected_key = 0; }
+int is_raw_possible(void) { return 1; }
+short shooting_get_drive_mode(void) { return 0; }
+short shooting_get_flash_mode(void) { return shooting_get_prop(PROPCASE_FLASH_MODE); }
+int remotecap_get_target(void) { return 0; }
+unsigned int GetFreeCardSpaceKb(void) { return 512000; }
+void console_add_line(const char *text) { (void)text; pair_errors++; }
+#endif
 static int conf_saves = 0;
 void conf_save(void) { conf_saves++; }
 
@@ -246,10 +269,15 @@ void filmsim_zoom_tick(void) {}
 const char *filmsim_zoom_str(void) { return 0; }
 const char *filmsim_tv_str(void) { return 0; }
 const char *filmsim_focus_str(void) { return 0; }
-long get_target_file_num(void) { return 123; }
+static int file_number = 123;
+long get_target_file_num(void) { return file_number; }
 void get_target_dir_name(char *d) { strcpy(d, "A/DCIM/100CANON"); }
 static struct tm tm_now = { .tm_year = 126, .tm_mon = 10, .tm_mday = 7 };
 struct tm *get_localtime(void) { return &tm_now; }
+#ifdef FILMSIM_JPEG_PAIR
+struct tm *localtime(const time_t *t) { (void)t; return &tm_now; }
+time_t time(time_t *t) { if (t) *t = 1; return 1; }
+#endif
 
 // RAW entwickeln: Datei, die raw.c laden wuerde; Weissabgleich des Hilfsschusses (G, R, B)
 static char prep_fn[64];
@@ -1447,6 +1475,69 @@ static void scenario_aiso(void)
     CHECK(filmsim_autoiso() == 0 && filmsim_aiso_str() == 0, "Aus");
 }
 
+#ifdef FILMSIM_JPEG_PAIR
+static void scenario_jpeg_pair(void)
+{
+    static const char original[] = "A/DCIM/100CANON/IMG_8345.JPG";
+    static const char helper[] = "A/DCIM/100CANON/IMG_8346.JPG";
+    static const char raw_file[] = "A/CHDK/DATA/EXCCDJP.TMP";
+    static const char jpeg[] = { (char)0xff, (char)0xd8, (char)0xff, (char)0xd9 };
+    char sensor[64];
+    memset(sensor, 42, sizeof(sensor));
+    camera_on();
+    camera_sensor.raw_size = sizeof(sensor);
+    CHECK(!conf.film_save_original_jpeg && strcmp(filmsim_pair_enum(1, 0), "needs a look") == 0,
+          "Original JPEG must be gated when the look is Off");
+
+    film_by_name("Chrome 64");
+    CHECK(!filmsim_pair_original(sensor, 125) && shooting_get_prop(PROPCASE_MY_COLORS) == MC_CUSTOM,
+          "Disabled setting must leave the recipe-only capture path active");
+    filmsim_pair_enum(1, 0);
+    CHECK(shooting_get_prop(PROPCASE_MY_COLORS) == MC_OFF, "Original must use Canon colours");
+    shooting_set_prop(PROPCASE_FLASH_MODE, 1);
+    file_number = 8345;
+    CHECK(filmsim_pair_original(sensor, 125), "Original capture did not queue a helper");
+    int source = fs_find(raw_file);
+    CHECK(source >= 0 && card[source].size == sizeof(sensor) &&
+          memcmp(card[source].data, sensor, sizeof(sensor)) == 0, "Wrong retained sensor data");
+    filmsim_pair_filewrite(original);
+    fs_put(original, jpeg, sizeof(jpeg));
+    filmsim_tick();
+    filmsim_pair_kbd();
+    CHECK(!injected_key && !filmsim_develop_armed(), "Helper started before Canon closed the original");
+
+    filmsim_pair_file_closed();
+    filmsim_tick();
+    filmsim_pair_kbd();
+    CHECK(injected_key == KEY_SHOOT_HALF && filmsim_develop_iso() == 125 &&
+          strcmp(prep_fn, raw_file) == 0 && shooting_get_prop(PROPCASE_MY_COLORS) == MC_CUSTOM,
+          "Helper did not queue the original sensor data and recipe");
+    camera_info.state.state_shooting_progress = SHOOTING_PROGRESS_STARTED;
+    filmsim_pair_kbd();
+    CHECK(injected_key == KEY_SHOOT_FULL_ONLY, "Helper did not complete the shutter press");
+    file_number = 8346;
+    filmsim_pair_helper_raw(1);
+    camera_info.state.state_shooting_progress = SHOOTING_PROGRESS_NONE;
+    filmsim_pair_filewrite(helper);
+    fs_put(helper, jpeg, sizeof(jpeg));
+    filmsim_pair_file_closed();
+    filmsim_tick();
+    filmsim_pair_kbd();
+    int first = fs_find(original), second = fs_find(helper);
+    CHECK(first >= 0 && second >= 0 && fs_find(raw_file) < 0 && !pair_errors,
+          "Both JPEGs must keep their Canon filenames");
+    CHECK(first >= 0 && second >= 0 && card[first].size == sizeof(jpeg) &&
+          card[second].size == sizeof(jpeg) &&
+          memcmp(card[first].data, jpeg, sizeof(jpeg)) == 0 &&
+          memcmp(card[second].data, jpeg, sizeof(jpeg)) == 0,
+          "Completing a pair must preserve both JPEG files");
+    CHECK(shooting_get_prop(PROPCASE_FLASH_MODE) == 1, "Original flash setting was not restored");
+
+    filmsim_set(0);
+    CHECK(!conf.film_save_original_jpeg, "Off must clear Save Original JPEG");
+}
+#endif
+
 int main(int argc, char **argv)
 {
     const char *what = argc > 1 ? argv[1] : "";
@@ -1459,6 +1550,9 @@ int main(int argc, char **argv)
     else if (strcmp(what, "aiso") == 0) scenario_aiso();
     else if (strcmp(what, "mixwb") == 0) scenario_mixwb();
     else if (strcmp(what, "thumb") == 0) scenario_thumb(argc > 3 ? argv[3] : 0, argc > 4 ? argv[4] : 0);
+#ifdef FILMSIM_JPEG_PAIR
+    else if (strcmp(what, "jpeg_pair") == 0) scenario_jpeg_pair();
+#endif
     else { printf("Szenario?\n"); return 2; }
     printf("%s (%d Fehler)\n", fails ? "FEHLER" : "ok", fails);
     return fails != 0;

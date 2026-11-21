@@ -40,6 +40,15 @@ static void prog_rows(int done, int total);
 #include "action_stack.h"
 #include "lang.h"
 #include "gui_lang.h"
+#ifdef FILMSIM_JPEG_PAIR
+#include "cachebit.h"
+#include "console.h"
+#include "remotecap_core.h"
+#include "stdio.h"
+#include "usb_remote.h"
+static int pair_use_original(void);
+static void pair_tick(void);
+#endif
 
 //-------------------------------------------------------------------
 // Kameraeinstellungen fuer EXCCD
@@ -641,7 +650,11 @@ void filmsim_apply(void)
 {
     const filmsim_t *s = current();
     if (filmsim_photo_mode())
+#ifdef FILMSIM_JPEG_PAIR
+        set_canon_props(pair_use_original() ? &sims[0] : s);
+#else
         set_canon_props(s);
+#endif
     set_curve(s);
 }
 
@@ -846,6 +859,10 @@ void filmsim_tick(void)
     static int cnt = 0;
     static int curve_done = 0;
 
+#ifdef FILMSIM_JPEG_PAIR
+    pair_tick();
+#endif
+
     if (camera_info.state.is_shutter_half_press)
         preview_pending = 0;         // Canon hat die Werte jetzt uebernommen
 
@@ -892,6 +909,9 @@ void filmsim_tick(void)
     if (conf.film_sim == 0) return;  // "Aus": Canon-Farben nicht anfassen
 
     const filmsim_t *s = current();
+#ifdef FILMSIM_JPEG_PAIR
+    if (pair_use_original()) s = &sims[0];
+#endif
     if (!canon_props_match(s))
         set_canon_props(s);
 }
@@ -914,6 +934,7 @@ void filmsim_set(int v)
     film_name_store();
     look_text_update();
     if (v == 0) {
+        conf.film_save_original_jpeg = 0;
         // zurueck auf Canon-Standard
 #ifndef FS_NO_MYCOLORS
         if (!was_off && filmsim_photo_mode())
@@ -2993,6 +3014,7 @@ void filmsim_reset_settings(void)
     conf.film_frame = 0;
     conf.film_wb_r = conf.film_wb_b = 0;
     conf.film_recipe = 0;
+    conf.film_save_original_jpeg = 0;
     set_curve(current());               // ohne Dynamik+ und WB-Verschiebung
 }
 
@@ -3591,6 +3613,255 @@ int filmsim_batch_kbd(void)
     if ((long)batch_as < 0) { batch_as = 0; batch_stop(); return 0; }
     return 1;
 }
+
+#ifdef FILMSIM_JPEG_PAIR
+#define PAIR_RAW_FILE "A/CHDK/DATA/EXCCDJP.TMP"
+#define PAIR_TIMEOUT_MS 30000
+#define JPEG_PATH_SIZE 33
+
+enum {
+    PAIR_IDLE, PAIR_ORIGINAL, PAIR_READY,
+    PAIR_METER, PAIR_HELPER, PAIR_RENDER, PAIR_LOAD_FAILED
+};
+
+static volatile int pair_phase;
+static volatile int pair_cancel;
+static volatile int pair_file_open;
+static volatile int pair_file_closed;
+static unsigned pair_deadline;
+static unsigned pair_full_tick;
+static int pair_keys;
+static int pair_flash_mode = -1;
+static int pair_number;
+static char pair_jpeg[JPEG_PATH_SIZE];
+static dng_meta_t pair_meta;
+
+static int pair_use_original(void)
+{
+    return conf.film_save_original_jpeg && conf.film_sim > 0 &&
+           pair_phase < PAIR_METER && !dev_armed && !dev_active &&
+           !dev_restore && !batch_on && filmsim_photo_mode() &&
+           !camera_info.state.state_kbd_script_run && !usb_remote_active &&
+           !remotecap_get_target() && is_raw_possible() && shooting_get_drive_mode() == 0;
+}
+
+void filmsim_pair_prepare_capture(void)
+{
+    if (conf.film_save_original_jpeg && conf.film_sim && filmsim_photo_mode()) {
+        const filmsim_t *s = pair_use_original() ? &sims[0] : current();
+        if (!canon_props_match(s))
+            set_canon_props(s);
+    }
+}
+
+const char *filmsim_pair_enum(int change, __attribute__((unused)) int arg)
+{
+    if (conf.film_sim <= 0)
+        return lang_str(LANG_EXCCD_NEEDS_LOOK);
+    if (change && pair_phase == PAIR_IDLE) {
+        conf.film_save_original_jpeg = !conf.film_save_original_jpeg;
+        filmsim_apply();
+    }
+    return lang_str(conf.film_save_original_jpeg ? LANG_EXCCD_ON : LANG_EXCCD_OFF);
+}
+
+static void pair_expect_file(int number, int phase)
+{
+    pair_file_open = 0;
+    pair_file_closed = 0;
+    pair_number = number;
+    pair_deadline = get_tick_count() + PAIR_TIMEOUT_MS;
+    pair_phase = phase;
+}
+
+int filmsim_pair_original(char *raw, int iso)
+{
+    if (pair_phase != PAIR_IDLE || !pair_use_original())
+        return 0;
+
+    // Reserve room for the first JPEG and the optional user DNG while the
+    // temporary sensor copy is on the card.
+    unsigned size = camera_sensor.raw_size;
+    int fd = -1;
+    if (GetFreeCardSpaceKb() >= size * (conf.save_raw ? 3u : 2u) / 1024)
+        fd = open(PAIR_RAW_FILE, O_WRONLY | O_CREAT | O_TRUNC, 0777);
+    int saved = 0;
+    if (fd >= 0) {
+#ifndef HOST_TEST
+        raw = ADR_TO_UNCACHED(raw);
+#endif
+        saved = write(fd, raw, size) == (int)size;
+        if (close(fd) != 0)
+            saved = 0;
+        if (!saved)
+            remove(PAIR_RAW_FILE);
+    }
+    if (!saved) {
+        console_add_line(lang_str(LANG_EXCCD_JPEG_PAIR_FAILED));
+        return 1; // keep the original even if the second render cannot be queued
+    }
+
+    int wb[3] = {0, 0, 0};
+    get_property_case(camera_info.props.wb_adj, wb, sizeof(wb));
+    time_t taken = camera_info.state.shutter_open_time;
+    if (!taken) taken = time(NULL);
+    struct tm *date = localtime(&taken);
+    pair_meta = (dng_meta_t){
+        .wb_r = wb[1], .wb_g = wb[0], .wb_b = wb[2], .iso = iso,
+        .dr = shot_dr > 0 ? shot_dr : 0,
+        .year = date->tm_year + 1900, .mon = date->tm_mon + 1, .day = date->tm_mday
+    };
+    pair_cancel = 0;
+    pair_expect_file(get_target_file_num(), PAIR_ORIGINAL);
+    return 1;
+}
+
+int filmsim_pair_helper(void)
+{
+    return pair_phase == PAIR_METER || pair_phase == PAIR_HELPER;
+}
+
+void filmsim_pair_helper_raw(int loaded)
+{
+    dev_armed = 0;
+    remove(PAIR_RAW_FILE);
+    pair_expect_file(get_target_file_num(), loaded ? PAIR_RENDER : PAIR_LOAD_FAILED);
+}
+
+void filmsim_pair_filewrite(const char *name)
+{
+    int phase = pair_phase;
+    if (phase != PAIR_ORIGINAL && phase != PAIR_RENDER && phase != PAIR_LOAD_FAILED)
+        return;
+    if (name[0] != 'A' && name[0] != 'a' && name[0] != '/')
+        return;
+    const char *path = name[0] == '/' ? name : name + 1;
+    unsigned len = strlen(path);
+    if (strncmp(path, "/DCIM/", 6) != 0 || len < 15 || len >= JPEG_PATH_SIZE - 1 ||
+        path[len - 9] != '_' || strcmp(path + len - 4, ".JPG") != 0)
+        return;
+    unsigned number = 0;
+    for (unsigned i = len - 8; i < len - 4; ++i) {
+        unsigned digit = (unsigned char)path[i] - '0';
+        if (digit > 9)
+            return;
+        number = number * 10 + digit;
+    }
+    if (!number || number != pair_number)
+        return;
+    pair_jpeg[0] = 'A';
+    strcpy(pair_jpeg + 1, path);
+    pair_file_open = 1;
+}
+
+void filmsim_pair_file_closed(void)
+{
+    if (pair_file_open)
+        pair_file_closed = 1;
+}
+
+static int jpeg_file_complete(const char *path)
+{
+    int fd = open(path, O_RDONLY, 0777);
+    if (fd < 0)
+        return 0;
+    unsigned char end[2];
+    int ok = lseek(fd, -2, SEEK_END) >= 0 && read(fd, end, 2) == 2 &&
+             end[0] == 0xff && end[1] == 0xd9;
+    close(fd);
+    return ok;
+}
+
+static void pair_finish(int saved)
+{
+    if (filmsim_pair_helper()) {
+        raw_prepare_develop(NULL, 0);
+        dev_armed = 0;
+    }
+    if (pair_flash_mode >= 0) {
+        shooting_set_prop(PROPCASE_FLASH_MODE, pair_flash_mode);
+        pair_flash_mode = -1;
+    }
+    remove(PAIR_RAW_FILE);
+    pair_cancel = 0;
+    pair_phase = PAIR_IDLE;
+    if (!saved)
+        console_add_line(lang_str(LANG_EXCCD_JPEG_PAIR_FAILED));
+    if (filmsim_photo_mode() && conf.film_sim)
+        set_canon_props(pair_use_original() ? &sims[0] : current());
+}
+
+static void pair_tick(void)
+{
+    int phase = pair_phase;
+    if (phase == PAIR_IDLE)
+        return;
+    if (pair_cancel || !filmsim_photo_mode() || (int)(get_tick_count() - pair_deadline) >= 0) {
+        pair_finish(0);
+        return;
+    }
+    if ((phase != PAIR_ORIGINAL && phase != PAIR_RENDER && phase != PAIR_LOAD_FAILED) ||
+        !pair_file_closed || shooting_in_progress() || !jpeg_file_complete(pair_jpeg))
+        return;
+    if (phase == PAIR_ORIGINAL) {
+        pair_phase = PAIR_READY;
+    } else if (phase == PAIR_RENDER) {
+        pair_finish(1);
+    } else {
+        remove(pair_jpeg); // this is the helper's own exposure after a failed RAW read
+        pair_finish(0);
+    }
+}
+
+int filmsim_pair_kbd(void)
+{
+    int phase = pair_phase;
+    if (phase == PAIR_IDLE) {
+        if (pair_keys) {
+            kbd_key_release_all();
+            pair_keys = 0;
+        }
+        return 0;
+    }
+    if (phase < PAIR_HELPER && kbd_is_key_clicked(KEY_MENU))
+        pair_cancel = 1;
+    if (pair_cancel)
+        kbd_key_release_all();
+    else if (phase == PAIR_READY && !kbd_get_pressed_key() &&
+             camera_info.state.gui_mode_none && !shooting_in_progress()) {
+        struct stat raw;
+        if (stat(PAIR_RAW_FILE, &raw) != 0 || raw.st_size != camera_sensor.raw_size) {
+            pair_cancel = 1;
+            return 1;
+        }
+        raw_prepare_develop(PAIR_RAW_FILE, 0);
+        dev_meta = pair_meta;
+        dev_has_meta = 1;
+        dev_armed = 1;
+        dev_prev = conf.film_sim;
+        dev_fx_init();
+        dev_ev = dev_temp = dev_tint = dev_dr = 0;
+        strcpy(dev_name, strrchr(pair_jpeg, '/') + 1);
+        pair_flash_mode = shooting_get_flash_mode();
+        shooting_set_prop(PROPCASE_FLASH_MODE, 2);
+        set_canon_props(current());
+        pair_deadline = get_tick_count() + PAIR_TIMEOUT_MS;
+        kbd_key_release_all();
+        kbd_key_press(KEY_SHOOT_HALF);
+        pair_phase = PAIR_METER;
+        pair_keys = 1;
+    } else if (phase == PAIR_METER && shooting_in_progress() && shooting_is_flash_ready()) {
+        kbd_key_press(KEY_SHOOT_FULL_ONLY);
+        pair_full_tick = get_tick_count();
+        pair_phase = PAIR_HELPER;
+    } else if (phase == PAIR_HELPER && (unsigned)get_tick_count() - pair_full_tick >= 100) {
+        kbd_key_release(KEY_SHOOT_FULL_ONLY);
+    } else if (phase == PAIR_RENDER || phase == PAIR_LOAD_FAILED || phase == PAIR_ORIGINAL) {
+        kbd_key_release_all();
+    }
+    return 1;
+}
+#endif
 
 //-------------------------------------------------------------------
 // Fortschrittsbalken (RAW entwickeln und jede Aufnahme mit Look oder Effekten)

@@ -201,6 +201,11 @@ void raw_process(void)
     capture_iso = shooting_get_capture_iso();
     int source_iso = filmsim_develop_iso();
     jpeg_iso_capture(source_iso > 0 ? source_iso : capture_iso);
+    int pair_helper = 0;
+    int pair_original = 0;
+#ifdef FILMSIM_JPEG_PAIR
+    pair_helper = filmsim_pair_helper();
+#endif
 
     // Get pointers to RAW buffers (will be the same on cameras that don't have two or more buffers)
     rawadr = get_raw_image_addr();
@@ -218,8 +223,8 @@ void raw_process(void)
         camera_sensor.black_level = CAM_BLACK_LEVEL;
 #endif
 
-    if ((conf.save_raw && conf.dng_raw && is_raw_enabled()) 
-        || (remotecap_get_target() & PTP_CHDK_CAPTURE_DNGHDR))
+    if (!pair_helper && ((conf.save_raw && conf.dng_raw && is_raw_enabled())
+        || (remotecap_get_target() & PTP_CHDK_CAPTURE_DNGHDR)))
     {                             
         libdng->capture_data_for_exif();
 	}
@@ -239,12 +244,17 @@ void raw_process(void)
     // Kette (ohne Speichern und Doppelbelichtung). Sie enthaelt die Korrekturen der
     // Aufnahme schon (Defektpixel, Spalten). Details in filmsim.c, filmsim_develop_select.
     int developing = (develop_raw != RAW_DEVELOP_OFF);
+#ifdef FILMSIM_JPEG_PAIR
+    if (!developing)
+        pair_original = filmsim_pair_original(rawadr, capture_iso);
+#endif
     if (developing)
     {
         // Effekte der Entwicklung einsetzen, Fortschrittsbalken zeigen (bis filmsim_develop_end)
         extern void filmsim_develop_prepare(void);
         filmsim_develop_prepare();
         started();
+        int loaded = 0;
         if (develop_raw == RAW_DEVELOP_DNG)
         {
             libdng->load_dng_to_rawbuffer(fn, rawadr);
@@ -253,7 +263,7 @@ void raw_process(void)
         {
             int fd = open(fn, O_RDONLY, 0777);
             if (fd >= 0) {
-                read(fd, rawadr, camera_sensor.raw_size);
+                loaded = read(fd, rawadr, camera_sensor.raw_size) == camera_sensor.raw_size;
                 close(fd);
             }
         }
@@ -261,17 +271,29 @@ void raw_process(void)
         develop_raw = RAW_DEVELOP_OFF;
         // Haelt filmsim_tick zurueck, bis Canon das JPEG fertig hat
         camera_info.state.state_shooting_progress = SHOOTING_PROGRESS_PROCESSING;
+#ifdef FILMSIM_JPEG_PAIR
+        if (pair_helper) {
+            filmsim_pair_helper_raw(loaded);
+            if (!loaded) {
+                extern void filmsim_develop_end(char *raw);
+                filmsim_develop_end(NULL);
+                return;
+            }
+            extern void filmsim_badcols_apply(void);
+            patch_bad_pixels();
+            filmsim_badcols_apply();
+        }
+#endif
         filmsim_develop_begin(rawadr);
     }
     else
     {
 
-    // Filmsim: A/CHDK/badpixel.txt wirkt immer, das RAW-Untermenue ist nicht erreichbar
-    patch_bad_pixels();
-
-    // Filmsim: defekte Sensorspalten aus A/CHDK/BADCOLS.TXT (vor DNG und JPEG)
-    extern void filmsim_badcols_apply(void);
-    filmsim_badcols_apply();
+    if (!pair_original) {
+        patch_bad_pixels();
+        extern void filmsim_badcols_apply(void);
+        filmsim_badcols_apply();
+    }
 
     shooting_bracketing();
 
@@ -303,6 +325,9 @@ void raw_process(void)
         }
     }
 
+    if (pair_original)
+        return;
+
     }
 
     // Filmsim: Fortschrittsbalken der normalen Aufnahme planen (Entwickeln hat ihn schon)
@@ -323,7 +348,7 @@ void raw_process(void)
 
     // Filmsim: Doppelbelichtung (vor Kurven, damit der Look nur einmal wirkt)
     extern void filmsim_double_hook(char *raw);
-    if (!developing)
+    if (!developing || pair_helper)
         filmsim_double_hook(rawadr);
     filmsim_time_mark(2);
 

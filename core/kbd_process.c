@@ -295,6 +295,11 @@ long kbd_process()
     if (!kbd_blocked && filmsim_batch_kbd())
         return 1;
 
+#ifdef FILMSIM_JPEG_PAIR
+    if (filmsim_pair_kbd())
+        return 1;
+#endif
+
 #ifdef FILMSIM_QUICK_BUTTONS
     if (!kbd_blocked && !usb_remote_active && !camera_info.state.state_kbd_script_run) {
         int key = kbd_get_clicked_key();
