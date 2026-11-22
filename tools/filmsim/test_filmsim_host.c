@@ -17,6 +17,7 @@
 #include "filmsim.h"
 #ifdef FILMSIM_EXFS
 #include "exfilmsim.h"
+#include "exfilmsim_hq.h"
 #endif
 #include "filmsim_txt.h"
 #include "lang.h"
@@ -366,9 +367,7 @@ static int dev_shot = 0;                // raw.c: Entwickeln (filmsim_develop_pr
 static void shoot(char *raw)
 {
 #ifdef FILMSIM_EXFS
-    if (conf.film_exfs) {
-        exfs_render(raw, dev_shot, 0);
-    } else
+    if (!exfs_render_selected(raw, dev_shot, 0))
 #endif
     {
     if (!dev_shot) filmsim_shot_prepare();
@@ -503,30 +502,41 @@ static void scenario_names(const char *variant)
     }
 }
 
+static int picker_position(int position, int total)
+{
+    char buf[16];
+    sprintf(buf, "%d/%d\n", position, total);
+    return strstr(drawn, buf) != NULL;
+}
+
 static void scenario_picker(void)
 {
-    int n;
+#ifdef FILMSIM_EXFS
+    const int total = 27;
+#else
+    const int total = 26;
+#endif
     camera_on();
     filmsim_set(3);
     filmsim_open_menu();
     CHECK(cur_mode != 0, "Auswahl nicht offen");
     cur_mode->redraw(1);
-    CHECK(strstr(drawn, "3/26") != 0, "Position fehlt: [%s]", drawn);
+    CHECK(picker_position(3, total), "Position fehlt: [%s]", drawn);
     CHECK(strstr(drawn, lang_str(LANG_EXCCD_PICK_HELP)) != 0, "Tastenhinweis fehlt: [%s]", drawn);
     press(KEY_RIGHT);
-    CHECK(strstr(drawn, "4/26") != 0, "rechts: [%s]", drawn);
+    CHECK(picker_position(4, total), "rechts: [%s]", drawn);
     press(KEY_LEFT); press(KEY_LEFT);
-    CHECK(strstr(drawn, "2/26") != 0, "links: [%s]", drawn);
+    CHECK(picker_position(2, total), "links: [%s]", drawn);
     press(KEY_DOWN);
-    CHECK(strstr(drawn, "7/26") != 0, "runter +5: [%s]", drawn);
+    CHECK(picker_position(7, total), "runter +5: [%s]", drawn);
     press(KEY_UP); press(KEY_UP);
-    CHECK(strstr(drawn, "23/26") == 0 && strstr(drawn, "24/26") != 0, "hoch -5 ueber den Anfang (2-5 = 24 von 0..26): [%s]", drawn);
-    for (n = 0; n < 27; n++) press(KEY_RIGHT);
-    CHECK(strstr(drawn, "24/26") != 0, "Runde: [%s]", drawn);
-    for (n = 0; n < 2; n++) press(KEY_RIGHT);
-    CHECK(strstr(drawn, "26/26") != 0, "Ende: [%s]", drawn);
+    CHECK(picker_position(total - 2, total), "hoch -5 ueber den Anfang: [%s]", drawn);
+    for (int n = 0; n <= total; n++) press(KEY_RIGHT);
+    CHECK(picker_position(total - 2, total), "Runde: [%s]", drawn);
+    press(KEY_RIGHT); press(KEY_RIGHT);
+    CHECK(picker_position(total, total), "Ende: [%s]", drawn);
     press(KEY_RIGHT);
-    CHECK(strstr(drawn, "/26") == 0 && strstr(drawn, "Off") != 0, "Off ohne Position: [%s]", drawn);
+    CHECK(strchr(drawn, '/') == NULL && strstr(drawn, "Off") != 0, "Off ohne Position: [%s]", drawn);
     press(KEY_SET);
     CHECK(conf.film_sim == 0, "SET: Film %d", conf.film_sim);
     CHECK(alt_exits == 1, "SET schliesst nicht");
@@ -1380,6 +1390,219 @@ static void scenario_exfs(void)
     free(input);
     free(rawbuf);
 }
+
+static void scenario_exfs_hq_picker(void)
+{
+    camera_on();
+    film_by_name("Kodak Gold 200");
+    conf.film_exfs = 1;
+    filmsim_open_menu();
+    cur_mode->redraw(1);
+    CHECK(strstr(drawn, lang_str(LANG_EXCCD_HQ_COMPATIBLE)), "Gold needs an HQ compatibility label");
+    press(KEY_DOWN);
+    CHECK(!strstr(drawn, lang_str(LANG_EXCCD_HQ_GRAIN_AMOUNT)), "EXFS opened HQ settings");
+    CHECK(!strstr(drawn, lang_str(LANG_EXCCD_HQ_FALLBACK)), "EXFS showed a fallback hint");
+
+    conf.film_exfs = 0;
+    conf.film_exfs_hq = 1;
+    conf.film_quick_button = 1;
+    camera_info.state.mode_shooting = MODE_P;
+    if (!filmsim_quick_open(filmsim_quick_mode(KEY_LEFT))) {
+        CHECK(0, "Left shortcut did not open the film picker");
+        return;
+    }
+    cur_mode->redraw(1);
+    CHECK(strstr(drawn, lang_str(LANG_EXCCD_HQ_PICK_HELP)), "HQ picker needs the Down hint");
+    press(KEY_DOWN);
+    CHECK(strstr(drawn, lang_str(LANG_EXCCD_HQ_GRAIN_AMOUNT)), "Left shortcut did not expose HQ settings");
+    for (int n = 0; n < 5; ++n) press(KEY_RIGHT);
+    press(KEY_DOWN);
+    press(KEY_LEFT);
+    press(KEY_DOWN);
+    press(KEY_RIGHT);
+    CHECK(conf.gold200_grain_amount == 0, "Grain settings changed before SET");
+    int exits = alt_exits, saves = conf_saves;
+    key_held = KEY_SET;
+    press(KEY_SET);
+    press(KEY_SET);
+    key_held = 0;
+    CHECK(alt_exits == exits && conf_saves == saves + 1, "SET should save once and return to the picker");
+    CHECK(conf.gold200_grain_amount == 3 && conf.gold200_grain_size == -1 &&
+          conf.gold200_grain_color == 1, "Each grain level should save independently");
+
+    camera_info.state.mode_shooting = MODE_M;
+    if (!filmsim_quick_open(filmsim_quick_print_mode(0)) ||
+        !filmsim_quick_open(filmsim_quick_print_mode(1))) {
+        CHECK(0, "Two Print presses did not open the film picker");
+        return;
+    }
+    press(KEY_DOWN);
+    CHECK(strstr(drawn, "\n+3\n"), "The two-Print picker should reopen saved grain levels");
+    press(KEY_LEFT);
+    cur_mode->kbd_process_menu_btn();
+    CHECK(conf.gold200_grain_amount == 3, "MENU should discard pending edits");
+    press(KEY_LEFT);
+    CHECK(strstr(drawn, lang_str(LANG_EXCCD_HQ_FALLBACK)), "HQ needs a fallback hint on unsupported looks");
+    press(KEY_DOWN);
+    CHECK(!strstr(drawn, lang_str(LANG_EXCCD_HQ_GRAIN_AMOUNT)), "An unsupported look opened HQ settings");
+    press(KEY_SET);
+    CHECK(conf.film_exfs_hq && !conf.film_exfs, "Selecting an unsupported look changed the engine preference");
+
+    static const char presets[] = "Kodak Gold 200 | 11 | 0 | -2 | 1 | 0 | 0 | 0 | 0 | gold200.cv | - | 0\n";
+    fs_put("A/CHDK/FILMS/FILMS.BAK", presets, sizeof(presets) - 1);
+    filmsim_open_catalog(1);
+    press(KEY_RIGHT);
+    CHECK(strstr(drawn, lang_str(LANG_EXCCD_HQ_PICK_HELP)), "Gold needs the HQ label in the preset picker");
+    press(KEY_DOWN);
+    CHECK(strstr(drawn, "\n+3\n"), "The preset picker should share Gold's saved grain levels");
+}
+
+static void scenario_exfs_hq_render(void)
+{
+    unsigned size = camera_sensor.raw_size;
+    rawbuf = malloc(size);
+    unsigned char *input = malloc(size), *reference = malloc(size);
+    CHECK(rawbuf && input && reference, "RAW buffer allocation failed");
+    if (!rawbuf || !input || !reference) return;
+    camera_on();
+    raw_fill_test();
+    memcpy(input, rawbuf, size);
+
+    film_by_name("Kodak Gold 200");
+    shoot((char *)rawbuf);
+    memcpy(reference, rawbuf, size);
+
+    conf.film_exfs = 1;
+    memcpy(rawbuf, input, size);
+    shoot((char *)rawbuf);
+    CHECK(memcmp(reference, rawbuf, size) == 0, "EXFS should leave Gold's legacy rendering unchanged");
+
+    conf.film_exfs = 0;
+    conf.film_exfs_hq = 1;
+    memcpy(rawbuf, input, size);
+    shoot((char *)rawbuf);
+    CHECK(exfs_hq_active_profile() && memcmp(reference, rawbuf, size) != 0, "Gold HQ should add grain");
+    CHECK(memcmp(reference, rawbuf, camera_sensor.active_area.y1 * camera_sensor.raw_rowlen) == 0,
+          "Grain changed the optical black rows");
+
+    conf.gold200_grain_amount = -3;
+    memcpy(rawbuf, input, size);
+    shoot((char *)rawbuf);
+    CHECK(memcmp(reference, rawbuf, size) == 0, "Gold HQ amount -3 should turn grain off");
+
+    film_by_name("Chrome 64");
+    conf.film_grain = 2;
+    conf.film_exfs = 1;
+    conf.film_exfs_hq = 0;
+    memcpy(rawbuf, input, size);
+    shoot((char *)rawbuf);
+    memcpy(reference, rawbuf, size);
+    conf.film_exfs = 0;
+    conf.film_exfs_hq = 1;
+    conf.gold200_grain_amount = 0;
+    memcpy(rawbuf, input, size);
+    shoot((char *)rawbuf);
+    CHECK(!exfs_hq_active_profile() && memcmp(reference, rawbuf, size) == 0,
+          "Unsupported looks should retain the EXFS render including legacy grain");
+    film_by_name("Kodak Gold 200");
+    CHECK(exfs_hq_active_profile() && !conf.film_exfs, "Returning to Gold should reactivate HQ");
+
+    free(reference);
+    free(input);
+    free(rawbuf);
+}
+
+static int hq_patch_tone(int x)
+{
+    static const short tones[] = { 64, 160, 416, 896 };
+    int patch = x / 512;
+    if (patch < 4)
+        return tones[patch];
+    return 416 + ((x & 4) ? 40 : -40);
+}
+
+static int hq_neutral_raw(int tone, int wb)
+{
+    return 31 + ((tone - 31) * 256 + wb / 2) / wb;
+}
+
+static void scenario_exfs_hq_texture(void)
+{
+    const int red_wb = 486, blue_wb = 371;
+    rawbuf = malloc(camera_sensor.raw_size);
+    CHECK(rawbuf, "RAW buffer allocation failed");
+    if (!rawbuf) return;
+    camera_on();
+    film_by_name("Kodak Gold 200");
+    conf.film_exfs_hq = 1;
+    const exfs_hq_profile *profile = exfs_hq_active_profile();
+    for (int y = 0; y < (int)camera_sensor.raw_rows; y += 2) {
+        for (int x = 0; x < (int)camera_sensor.raw_rowpix; x += 2) {
+            int tone = hq_patch_tone(x);
+            set_raw_pixel(x, y, hq_neutral_raw(tone, red_wb));
+            set_raw_pixel(x + 1, y, tone);
+            set_raw_pixel(x, y + 1, tone);
+            set_raw_pixel(x + 1, y + 1, hq_neutral_raw(tone, blue_wb));
+        }
+    }
+    CHECK(exfs_hq_grain((char *)rawbuf, profile, red_wb, blue_wb), "HQ grain allocation failed");
+    double rms[5], chroma[5];
+    for (int i = 0; i < 5; ++i) {
+        double sum = 0, luma_sq = 0, chroma_sq = 0;
+        int n = 0;
+        for (int y = 90; y < 600; y += 6) {
+            for (int x = 512 * i + 64; x < 512 * i + 448; x += 6) {
+                int tone = hq_patch_tone(x);
+                double r = (RAW10(x, y) - hq_neutral_raw(tone, red_wb)) * red_wb / 256.0;
+                double g = (RAW10(x + 1, y) + RAW10(x, y + 1)) / 2.0 - tone;
+                double b = (RAW10(x + 1, y + 1) - hq_neutral_raw(tone, blue_wb)) * blue_wb / 256.0;
+                double luma = (4 * r + 10 * g + 2 * b) / 16;
+                sum += luma;
+                luma_sq += luma * luma;
+                chroma_sq += ((r - g) * (r - g) + (b - g) * (b - g)) / 2;
+                ++n;
+            }
+        }
+        rms[i] = sqrt(luma_sq / n);
+        chroma[i] = sqrt(chroma_sq / n);
+        double mean = sum / n;
+        CHECK(mean > -1.3 && mean < 1.3, "Patch %d has a mean brightness shift of %.2f", i, mean);
+    }
+    printf("Gold HQ luma RMS: black %.2f, shadow %.2f, midtone %.2f, highlight %.2f, detail %.2f\n",
+           rms[0], rms[1], rms[2], rms[3], rms[4]);
+    printf("Gold HQ midtone chroma RMS: %.2f\n", chroma[2]);
+    CHECK(rms[2] > 18 && rms[2] < 25, "Default midtone grain differs from the tuned intensity");
+    CHECK(rms[1] > rms[2] * .4 && rms[1] < rms[2] * .75 &&
+          rms[0] < rms[1] && rms[3] < rms[1] * .5, "The tonal grain envelope is uneven");
+    CHECK(chroma[2] < rms[2] * .23, "Default grain should be predominantly luminance");
+    CHECK(rms[4] >= rms[2] * .70 && rms[4] < rms[2] * .93, "Fine details should retain visible, softer grain");
+
+    int r0 = hq_neutral_raw(416, red_wb), b0 = hq_neutral_raw(416, blue_wb);
+    unsigned seed = 19;
+    for (int y = 80; y < 608; y += 2) {
+        for (int x = 1056; x < 1504; x += 2) {
+            seed = seed * 1664525u + 1013904223u;
+            set_raw_pixel(x, y, r0 + (int)(seed >> 27) - 16);
+            set_raw_pixel(x + 1, y, 416);
+            set_raw_pixel(x, y + 1, 416);
+            set_raw_pixel(x + 1, y + 1, b0 + (int)((seed >> 22) & 31) - 16);
+        }
+    }
+    filmsim_cnr_hook((char *)rawbuf);
+    double sensor_sq = 0;
+    int n = 0, changed_green = 0;
+    for (int y = 90; y < 600; y += 6) {
+        for (int x = 1064; x < 1496; x += 6) {
+            int r = RAW10(x, y) - r0, b = RAW10(x + 1, y + 1) - b0;
+            sensor_sq += (r * r + b * b) / 2.0;
+            changed_green += RAW10(x + 1, y) != 416 || RAW10(x, y + 1) != 416;
+            ++n;
+        }
+    }
+    CHECK(sqrt(sensor_sq / n) < 7.9 && !changed_green,
+          "Sensor cleanup should reduce chroma noise and preserve both green samples");
+    free(rawbuf);
+}
 #endif
 
 #if CAM_SENSOR_BITS_PER_PIXEL == 12
@@ -1744,6 +1967,9 @@ int main(int argc, char **argv)
     else if (strcmp(what, "thumb") == 0) scenario_thumb(argc > 3 ? argv[3] : 0, argc > 4 ? argv[4] : 0);
 #ifdef FILMSIM_EXFS
     else if (strcmp(what, "exfs") == 0) scenario_exfs();
+    else if (strcmp(what, "exfs_hq_picker") == 0) scenario_exfs_hq_picker();
+    else if (strcmp(what, "exfs_hq_render") == 0) scenario_exfs_hq_render();
+    else if (strcmp(what, "exfs_hq_texture") == 0) scenario_exfs_hq_texture();
     else if (strcmp(what, "exfs_develop") == 0) {
         conf.film_exfs = 1;
         scenario_develop();

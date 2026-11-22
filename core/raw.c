@@ -354,9 +354,7 @@ void raw_process(void)
     }
 
 #ifdef FILMSIM_EXFS
-    if (conf.film_exfs) {
-        exfs_render(rawadr, developing, pair_helper);
-    } else
+    if (!exfs_render_selected(rawadr, developing, pair_helper))
 #endif
     {
     // Filmsim: Fortschrittsbalken der normalen Aufnahme planen (Entwickeln hat ihn schon)

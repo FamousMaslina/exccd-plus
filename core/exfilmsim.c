@@ -5,6 +5,7 @@
 #include "curves.h"
 #include "filmsim.h"
 #include "exfilmsim.h"
+#include "exfilmsim_hq.h"
 
 #define FS_PROG_ROW(y, rows) exfs_progress_row(y, rows)
 #include "exfilmsim_raw.h"
@@ -46,7 +47,8 @@ static void exfs_finish_develop(char *raw)
     filmsim_develop_end(NULL);
 }
 
-void exfs_render(char *raw, int developing, int pair_helper)
+static void exfs_render_pipeline(char *raw, int developing, int pair_helper,
+                                 const exfs_hq_profile *hq_profile)
 {
     if (!developing)
         filmsim_shot_prepare();
@@ -78,7 +80,10 @@ void exfs_render(char *raw, int developing, int pair_helper)
     filmsim_perf_mark(PERF_NONE);
 
     filmsim_prog_step(PS_GLOW);
-    filmsim_effects_apply(raw);
+    if (hq_profile)
+        filmsim_effects_apply_hq(raw, hq_profile);
+    else
+        filmsim_effects_apply(raw);
     if (developing) {
         filmsim_perf_mark(PERF_WHITE_BALANCE);
         exfs_finish_develop(raw);
@@ -86,4 +91,26 @@ void exfs_render(char *raw, int developing, int pair_helper)
     } else {
         filmsim_shot_end();
     }
+}
+
+static void exfs_render(char *raw, int developing, int pair_helper)
+{
+    exfs_render_pipeline(raw, developing, pair_helper, NULL);
+}
+
+static void exfs_hq_render(char *raw, int developing, int pair_helper, const exfs_hq_profile *profile)
+{
+    exfs_render_pipeline(raw, developing, pair_helper, profile);
+}
+
+int exfs_render_selected(char *raw, int developing, int pair_helper)
+{
+    if (!conf.film_exfs && !conf.film_exfs_hq)
+        return 0;
+    const exfs_hq_profile *profile = exfs_hq_active_profile();
+    if (profile)
+        exfs_hq_render(raw, developing, pair_helper, profile);
+    else
+        exfs_render(raw, developing, pair_helper);
+    return 1;
 }

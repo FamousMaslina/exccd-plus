@@ -2,7 +2,7 @@
 # EXCCD+
 <img width="900" height="300" alt="exccdplus" src="https://github.com/user-attachments/assets/167387f4-b2bd-4155-afc7-9e13be0f9175" />
 
-EXCCD+ v1.1.1 combines the original [CHDK](https://chdk.fandom.com/) menu and script loader
+EXCCD+ v1.2 combines the original [CHDK](https://chdk.fandom.com/) menu and script loader
 with the film looks from [EXCCD v1.10.2](https://github.com/35mmSebas/exccd). Each look
 combines Canon's *My Colors* settings with a tone curve applied before the camera creates the JPEG.
 
@@ -26,16 +26,48 @@ EXCCD engine. EXFS uses the same recipes and Canon JPEG processing. It speeds
 up the RAW hot-pixel scan, RGB tone curves, and white-balance correction after
 RAW development.
 
-These timings were measured on the A620 1.00f with **Kodak Gold 200**. Each row
-compares one capture per engine, from RAW handling to the final JPEG close.
+These timings were measured on the A620 1.00f with **Kodak Gold 200**, from RAW
+handling to the final JPEG close. The first two rows compare one capture per engine.
 
 | Capture mode | Original EXCCD | EXFS | Time saved | RGB tone curve, EXCCD → EXFS |
 |---|---:|---:|---:|---:|
 | Single photo | 6.66 s | 5.85 s | **0.81 s (12.2%)** | 2.25 s → 1.17 s |
 | Save Original JPEG | 14.01 s | 11.95 s | **2.06 s (14.7%)** | 2.26 s → 1.16 s |
+| Single photo (EXFS HQ 1.0) | — | 40.19 s (HQ) | — | 1.16 s (HQ) |
+
+### ExFilmSim High Quality (EXFS HQ 1.0)
+
+On the A620, enable **EXFS HQ 1.0** in the **EXCCD+** menu. Enabling
+either EXFS checkbox clears the other. With both cleared, the camera uses
+the original EXCCD engine.
+
+The picker marks **Kodak Gold 200** as HQ compatible. Highlight it with
+EXFS HQ enabled and press **Down** to adjust **Grain amount**, **Grain size**,
+and **Grain color**. Use **Up/Down** to choose a setting and **Left/Right**
+to adjust it from −3 to +3. The defaults are 0, and amount −3 turns HQ grain
+off. **FUNC/SET** saves and returns to the picker. Press **FUNC/SET** again
+to select the highlighted recipe. **MENU** in the grain settings cancels
+pending changes.
+
+Gold 200 HQ uses the supplied scans as a reference for irregular,
+mostly luminance grain. The default is strongest in midtones, moderate
+in shadows, and weakest in highlights. The grain softens over fine
+detail and remains visible at edges. With HQ grain enabled, Gold 200
+uses gentle sensor chroma cleanup when the Color Noise Filter would
+otherwise be off. It uses its own saved grain levels in place of the
+regular Grain setting. Other looks use EXFS with their usual settings
+while EXFS HQ stays selected for the next compatible look.
+
+In the EXFS HQ 1.0 timing above, colour noise reduction took 18.33 s and
+grain took 16.45 s.
+
+**Sample images coming soon.**
 
 ## What's new
 
+- **v1.2** Add **EXFS HQ 1.0** for **Kodak Gold 200** on the A620. Press
+  **Down** in the film picker to adjust grain amount, size, and colour.
+  Other looks use EXFS while EXFS HQ stays selected.
 - **v1.1.1** Add a two-tap **Print** shortcut for the A620's other still-photo modes.
   The first tap opens **Quick ISO**, and the next tap opens the film picker. The
   **Left/Right** shortcuts are available in **P**, **Night Scene**, **Landscape**,
@@ -126,21 +158,23 @@ to a free recipe slot if you want to recall them together.
 midtones, deeper shadows and softer highlights. The curve was previewed on A620 DNG/JPEG pairs.
 [Kodak Gold 200 Fuji recipe](https://fujixweekly.com/2023/10/24/kodak-gold-200-fujifilm-x-t5-x-trans-v-film-simulation-recipe/)
 
-Generate and install `GOLD200.CV`, `GOLD2001.CV` and `GOLD2002.CV` as above, then add this row
-to `CHDK/FILMS/FILMS.TXT` and optionally to `FILMS.BAK`.
+The A620 build includes the look and its three curves. If you use a custom
+`CHDK/FILMS/FILMS.TXT`, include this row there. Add it to `FILMS.BAK` if you
+also want Gold in your presets-only picker.
 
 ```text
 Kodak Gold 200 | 11 | 0 | -2 | 1 | 0 | 0 | 0 | 0 | GOLD200.CV | - | 0
 ```
 
-For the full recipe, use Daylight white balance, centered WB shift, Medium grain and colour
-noise filter Off. Use Dynamic+2 for highlight protection in automatic exposure modes.
+For the full recipe, use Daylight white balance, centered WB shift and colour
+noise filter Off. For the original EXCCD or EXFS engine, use Medium grain.
+Use Dynamic+2 for highlight protection in automatic exposure modes.
 
 ## Installation
 
 Build for your camera model and firmware version. For the A620 1.00f, run
 `sh tools/filmsim/build.sh a620` from the repository with the [build tools](#camera-build-requirements)
-on your PATH. Extract the resulting build from `dist/v1.1.1/` to the root of the SD card.
+on your PATH. Extract the resulting build from `dist/v1.2/` to the root of the SD card.
 On the A620, start manually in playback with **MENU → Firm Update**. For
 autostart, use **EXCCD+ → System → Make Card Bootable...**, then lock the SD card and restart.
 

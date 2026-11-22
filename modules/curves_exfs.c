@@ -10,7 +10,7 @@ void exfs_module_rgb_curve(unsigned char *raw, int rows, int rowpix, int rowlen,
 
 static int exfs_can_apply_rgb(void)
 {
-    if (!conf.film_exfs || conf.curve_enable != 1 || current_curve_type != CURVE_CUSTOM)
+    if ((!conf.film_exfs && !conf.film_exfs_hq) || conf.curve_enable != 1 || current_curve_type != CURVE_CUSTOM)
         return 0;
     for (int i = 0; i < 4 * CURVE_SIZE; i++)
         if (curve_data[i] > 1023)

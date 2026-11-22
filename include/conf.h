@@ -493,6 +493,10 @@ typedef struct
     int film_save_original_jpeg;
     int film_performance_metrics;
     int film_exfs;
+    int film_exfs_hq;
+    int gold200_grain_amount;
+    int gold200_grain_size;
+    int gold200_grain_color;
 
 } Conf;
 

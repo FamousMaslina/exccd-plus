@@ -25,6 +25,9 @@
 #include "clock.h"
 #include "dirent.h"
 #include "filmsim.h"
+#ifdef FILMSIM_EXFS
+#include "exfilmsim_hq.h"
+#endif
 
 // splash screen time
 #if defined(OPT_EXPIRE_TEST)
@@ -930,6 +933,9 @@ static void gui_show_build_info(__attribute__ ((unused))int arg)
     const char *comp = text[comp_text_index];
     sprintf(buf, lang_str(LANG_MSG_BUILD_INFO_TEXT), camera_info.chdk_ver, camera_info.build_number, camera_info.build_svnrev, camera_info.build_date, camera_info.build_time, camera_info.platform, camera_info.platformsub, comp);
     strcat(buf, "\n" FILMSIM_PRODUCT_NAME " " FILMSIM_VERSION);
+#ifdef FILMSIM_EXFS
+    strcat(buf, "\nEXFS HQ " EXFS_HQ_VERSION);
+#endif
     gui_mbox_init(LANG_MSG_BUILD_INFO_TITLE, (int)buf, MBOX_FUNC_RESTORE|MBOX_TEXT_LEFT, NULL);
 }
 
@@ -2515,6 +2521,20 @@ static CMenuItem exccd_raw_items[] = {
 };
 static CMenu exccd_raw_menu = {0x5c,(int)"RAW", exccd_raw_items };
 
+#ifdef FILMSIM_EXFS
+static void gui_filmsim_exfs_changed(void)
+{
+    if (conf.film_exfs)
+        conf.film_exfs_hq = 0;
+}
+
+static void gui_filmsim_exfs_hq_changed(void)
+{
+    if (conf.film_exfs_hq)
+        conf.film_exfs = 0;
+}
+#endif
+
 // Oben Rezept und Look, darunter die Kamera fuer die Situation (nicht im Rezept)
 static CMenuItem exccd_menu_items[] = {
     MENU_ITEM   (0x5f,LANG_EXCCD_SELECT_FILM,               MENUITEM_PROC,      gui_filmsim_select, 0 ),
@@ -2530,7 +2550,8 @@ static CMenuItem exccd_menu_items[] = {
 #endif
     MENU_ITEM   (0x5c,LANG_EXCCD_PERFORMANCE_METRICS,        MENUITEM_ENUM,      filmsim_perf_enum, 0 ),
 #ifdef FILMSIM_EXFS
-    MENU_ITEM   (0x5c,LANG_EXCCD_EXFS,                       MENUITEM_BOOL,      &conf.film_exfs, 0 ),
+    MENU_ITEM   (0x5c,LANG_EXCCD_EXFS,                       MENUITEM_BOOL|MENUITEM_ARG_CALLBACK, &conf.film_exfs, gui_filmsim_exfs_changed ),
+    MENU_ITEM   (0x5c,LANG_EXCCD_EXFS_HQ,                    MENUITEM_BOOL|MENUITEM_ARG_CALLBACK, &conf.film_exfs_hq, gui_filmsim_exfs_hq_changed ),
 #endif
     MENU_ITEM   (0x0,(int)"",                               MENUITEM_SEPARATOR, 0, 0 ),
     MENU_ITEM   (0x61,LANG_EXCCD_SHUTTER,                   MENUITEM_ENUM,      gui_filmsim_tv_enum, 0 ),

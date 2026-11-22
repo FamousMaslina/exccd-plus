@@ -934,8 +934,16 @@
 #define LANG_EXCCD_NEEDS_RECIPE                 801
 #define LANG_EXCCD_EXFS                         802
 #define LANG_EXCCD_PRINT_FOR_RECIPES            803
+#define LANG_EXCCD_EXFS_HQ                      804
+#define LANG_EXCCD_HQ_COMPATIBLE                805
+#define LANG_EXCCD_HQ_PICK_HELP                 806
+#define LANG_EXCCD_HQ_FALLBACK                  807
+#define LANG_EXCCD_HQ_GRAIN_AMOUNT              808
+#define LANG_EXCCD_HQ_GRAIN_SIZE                809
+#define LANG_EXCCD_HQ_GRAIN_COLOR               810
+#define LANG_EXCCD_HQ_GRAIN_HELP                811
 
-#define GUI_LANG_ITEMS                          803
+#define GUI_LANG_ITEMS                          811
 
 //-------------------------------------------------------------------
 extern void gui_lang_init();

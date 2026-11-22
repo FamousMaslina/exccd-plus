@@ -566,6 +566,10 @@ static ConfInfo conf_info[] = {
     CONF_INFO(277, conf.film_save_original_jpeg,                CONF_DEF_VALUE, i:0),
     CONF_INFO(278, conf.film_performance_metrics,               CONF_DEF_VALUE, i:0),
     CONF_INFO(279, conf.film_exfs,                              CONF_DEF_VALUE, i:0),
+    CONF_INFO(280, conf.film_exfs_hq,                           CONF_DEF_VALUE, i:0),
+    CONF_INFO(281, conf.gold200_grain_amount,                   CONF_DEF_VALUE, i:0),
+    CONF_INFO(282, conf.gold200_grain_size,                     CONF_DEF_VALUE, i:0),
+    CONF_INFO(283, conf.gold200_grain_color,                    CONF_DEF_VALUE, i:0),
 
     CONF_INFO(999, conf.script_allow_lua_native_calls,          CONF_DEF_VALUE, i:0),
 
@@ -996,6 +1000,10 @@ void conf_restore()
 
     // clear any "clear on restart" values
     clear_values();
+#ifdef FILMSIM_EXFS
+    if (conf.film_exfs_hq)
+        conf.film_exfs = 0;
+#endif
 #ifdef FILMSIM_QUICK_BUTTONS
     filmsim_normalize_quick_buttons();
 #endif

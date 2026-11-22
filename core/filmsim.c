@@ -30,6 +30,9 @@
 #include "filmsim_txt.h"
 #include "filmsim_recipe.h"
 #include "lens.h"
+#ifdef FILMSIM_EXFS
+#include "exfilmsim_hq.h"
+#endif
 // Fortschrittsbalken beim RAW-Entwickeln (am Dateiende), auch aus filmsim_raw.h gerufen
 static void prog_rows(int done, int total);
 #define FS_PROG_ROW(y, n) prog_rows((y), (n))
@@ -143,6 +146,9 @@ static const filmsim_t sims_builtin[] = {
     { "Cyano 25",        MC_CUSTOM,   0,  0,  0,  0,  0,  0,  0,  "CYANO.CV",     "CYANO",    5 },
     { "Instant 600",     MC_CUSTOM,  -1, -1, -1,  0,  0,  0,  0,  "INSTANT.CV",   "INSTANT",  0 },
     { "Pastel 400",      MC_CUSTOM,  -1, -1, -1,  0,  0,  0,  1,  "PASTEL.CV",    "PASTEL",   0 },
+#ifdef FILMSIM_EXFS
+    { "Kodak Gold 200",  MC_CUSTOM,   0, -2,  1,  0,  0,  0,  0,  "GOLD200.CV",  0,          0 },
+#endif
 };
 #define NUM_BUILTIN ((int)(sizeof(sims_builtin)/sizeof(sims_builtin[0])))
 
@@ -392,6 +398,13 @@ static const filmsim_t* current(void)
     const filmsim_t *film = film_at(conf.film_sim);
     return film ? film : &sims[0];
 }
+
+#ifdef FILMSIM_EXFS
+const exfs_hq_profile *exfs_hq_active_profile(void)
+{
+    return conf.film_exfs_hq ? exfs_hq_profile_for_curve(current()->curve) : NULL;
+}
+#endif
 
 const char* filmsim_name(void)
 {
@@ -990,6 +1003,84 @@ static int label_for = -1;          // fuer welchen Film label_buf gilt
 static int picker_offset;
 static int picker_count;
 
+#ifdef FILMSIM_EXFS
+static const exfs_hq_profile *hq_settings_profile;
+static int hq_settings_row;
+static int hq_settings_levels[EXFS_HQ_CONTROLS];
+static int hq_settings_wait_set_release;
+
+static const exfs_hq_profile *film_hq_profile(int id)
+{
+    const filmsim_t *film = film_at(id);
+    return film ? exfs_hq_profile_for_curve(film->curve) : NULL;
+}
+
+static void hq_settings_open(const exfs_hq_profile *profile)
+{
+    hq_settings_profile = profile;
+    hq_settings_row = EXFS_HQ_AMOUNT;
+    for (int i = 0; i < EXFS_HQ_CONTROLS; ++i)
+        hq_settings_levels[i] = exfs_hq_clamp_level(*profile->levels[i]);
+    need_draw = 1;
+}
+
+static void hq_settings_draw(void)
+{
+    static const int names[] = {
+        LANG_EXCCD_HQ_GRAIN_AMOUNT, LANG_EXCCD_HQ_GRAIN_SIZE, LANG_EXCCD_HQ_GRAIN_COLOR
+    };
+    int x = (camera_screen.width - LABEL_W) / 2;
+    int y = (camera_screen.height - 9 * FONT_HEIGHT) / 2;
+    draw_rectangle(0, 0, camera_screen.width - 1, camera_screen.height - 1,
+                   MAKE_COLOR(COLOR_BLACK, COLOR_BLACK), RECT_BORDER0|DRAW_FILLED);
+    draw_string(x, y, lang_str(LANG_EXCCD_EXFS_HQ), MAKE_COLOR(COLOR_BLACK, COLOR_WHITE));
+    draw_string(x, y + FONT_HEIGHT, sim_name(picker_offset + sel), MAKE_COLOR(COLOR_BLACK, EX_GREY));
+    for (int i = 0; i < EXFS_HQ_CONTROLS; ++i) {
+        int row_y = y + (3 + i) * FONT_HEIGHT;
+        int selected = i == hq_settings_row;
+        twoColors c = selected ? MAKE_COLOR(COLOR_WHITE, COLOR_BLACK) : MAKE_COLOR(COLOR_BLACK, COLOR_WHITE);
+        char level[16];
+        if (i == EXFS_HQ_AMOUNT && hq_settings_levels[i] == EXFS_HQ_LEVEL_MIN)
+            sprintf(level, "%d (%.10s)", EXFS_HQ_LEVEL_MIN, lang_str(LANG_EXCCD_OFF));
+        else if (hq_settings_levels[i])
+            sprintf(level, "%+d", hq_settings_levels[i]);
+        else
+            strcpy(level, "0");
+        draw_rectangle(x, row_y, x + LABEL_W - 1, row_y + FONT_HEIGHT - 1, c, RECT_BORDER0|DRAW_FILLED);
+        draw_string(x + FONT_WIDTH, row_y, lang_str(names[i]), c);
+        draw_string(x + LABEL_W - ((int)strlen(level) + 1) * FONT_WIDTH, row_y, level, c);
+    }
+    draw_string(x, y + 7 * FONT_HEIGHT, lang_str(LANG_EXCCD_HQ_GRAIN_HELP), MAKE_COLOR(COLOR_BLACK, EX_GREY));
+}
+
+static void hq_settings_kbd(int key)
+{
+    switch (key) {
+    case KEY_UP:
+        hq_settings_row = (hq_settings_row + EXFS_HQ_CONTROLS - 1) % EXFS_HQ_CONTROLS;
+        break;
+    case KEY_DOWN:
+        hq_settings_row = (hq_settings_row + 1) % EXFS_HQ_CONTROLS;
+        break;
+    case KEY_LEFT:
+    case KEY_RIGHT:
+        hq_settings_levels[hq_settings_row] = exfs_hq_clamp_level(
+            hq_settings_levels[hq_settings_row] + (key == KEY_RIGHT ? 1 : -1));
+        break;
+    case KEY_SET:
+        for (int i = 0; i < EXFS_HQ_CONTROLS; ++i)
+            *hq_settings_profile->levels[i] = hq_settings_levels[i];
+        conf_save();
+        hq_settings_profile = NULL;
+        hq_settings_wait_set_release = 1;
+        break;
+    default:
+        return;
+    }
+    need_draw = 1;
+}
+#endif
+
 static void label_free(void)
 {
     if (label_buf) free(label_buf);
@@ -1105,7 +1196,14 @@ static void bar_draw(void)
     }
     draw_string(x, BAR_Y, n, MAKE_COLOR(COLOR_BLACK, COLOR_WHITE));
     // Hinweis: wer die Kamera zum ersten Mal hat, weiss nicht, dass MENU die Optionen oeffnet
-    const char *hl = lang_str(LANG_EXCCD_PICK_HELP);
+    int help = LANG_EXCCD_PICK_HELP;
+#ifdef FILMSIM_EXFS
+    if (film_hq_profile(film))
+        help = conf.film_exfs_hq ? LANG_EXCCD_HQ_PICK_HELP : LANG_EXCCD_HQ_COMPATIBLE;
+    else if (film && conf.film_exfs_hq)
+        help = LANG_EXCCD_HQ_FALLBACK;
+#endif
+    const char *hl = lang_str(help);
     if (HELP_Y + FONT_HEIGHT <= camera_screen.height)
         draw_string((camera_screen.width - (int)strlen(hl) * FONT_WIDTH) / 2, HELP_Y, hl, MAKE_COLOR(COLOR_BLACK, EX_GREY));
 }
@@ -1114,6 +1212,13 @@ static void film_gui_draw(int force)
 {
     if (force) need_draw = 1;
     if (!need_draw) return;
+#ifdef FILMSIM_EXFS
+    if (hq_settings_profile) {
+        hq_settings_draw();
+        need_draw = 0;
+        return;
+    }
+#endif
     if (need_draw == 1) {
         const int film = sel ? picker_offset + sel : 0;
         draw_rectangle(0, 0, camera_screen.width - 1, camera_screen.height - 1,
@@ -1141,7 +1246,20 @@ static void film_gui_close(void)
 static int film_gui_kbd(void)
 {
     const int step = picker_count > 5 ? 5 : 1;
-    switch (kbd_get_autoclicked_key() | get_jogdial_direction())
+    int key = kbd_get_autoclicked_key() | get_jogdial_direction();
+#ifdef FILMSIM_EXFS
+    if (hq_settings_profile) {
+        hq_settings_kbd(key);
+        return 0;
+    }
+    if (hq_settings_wait_set_release) {
+        if (!kbd_is_key_pressed(KEY_SET))
+            hq_settings_wait_set_release = 0;
+        else if (key == KEY_SET)
+            return 0;
+    }
+#endif
+    switch (key)
     {
     case KEY_LEFT: case JOGDIAL_LEFT:
         sel = (sel > 0) ? sel - 1 : picker_count - 1;
@@ -1156,6 +1274,15 @@ static int film_gui_kbd(void)
         need_draw = 1;
         break;
     case KEY_DOWN:
+#ifdef FILMSIM_EXFS
+        if (sel && conf.film_exfs_hq) {
+            const exfs_hq_profile *profile = film_hq_profile(picker_offset + sel);
+            if (profile) {
+                hq_settings_open(profile);
+                break;
+            }
+        }
+#endif
         sel = (sel + step) % picker_count;
         need_draw = 1;
         break;
@@ -1176,6 +1303,13 @@ static int film_gui_kbd(void)
 
 static void film_gui_menu_btn(void)
 {
+#ifdef FILMSIM_EXFS
+    if (hq_settings_profile) {
+        hq_settings_profile = NULL;
+        need_draw = 1;
+        return;
+    }
+#endif
     label_free();
     if (get_curr_menu() != &exccd_menu)
         gui_menu_init(&exccd_menu);
@@ -1205,6 +1339,10 @@ static void palette_autosave(void)
 
 void filmsim_open_menu(void)
 {
+#ifdef FILMSIM_EXFS
+    hq_settings_profile = NULL;
+    hq_settings_wait_set_release = 0;
+#endif
 #ifdef FILMSIM_QUICK_BUTTONS
     quick_film_mode = 0;
 #endif
@@ -1460,6 +1598,16 @@ static int cnr_level(void)
     if (conf.film_cnr != CNR_AUTO) return conf.film_cnr;
     int iso = (dev_active && dev_has_meta && dev_meta.iso > 0) ? dev_meta.iso : shooting_get_iso_market();
     return iso >= 800 ? 2 : (iso >= 400 ? 1 : 0);
+}
+
+static int hq_sensor_chroma_strength(void)
+{
+#ifdef FILMSIM_EXFS
+    const exfs_hq_profile *profile = exfs_hq_active_profile();
+    if (exfs_hq_grain_enabled(profile))
+        return profile->sensor_chroma;
+#endif
+    return 0;
 }
 
 // " | text" anhaengen, wenn die Zeile danach hoechstens max Zeichen hat
@@ -2489,12 +2637,18 @@ __attribute__((optimize("O2")))
 static void filmsim_cnr_apply(char *raw)
 {
     int level = cnr_level();
-    int R = level == 1 ? 2 : (level == 2 ? CNR_RMAX : 0);
+    int hq_strength = level == 0 ? hq_sensor_chroma_strength() : 0;
+    int R = hq_strength ? 1 : (level == 1 ? 2 : (level == 2 ? CNR_RMAX : 0));
     if (!R || !raw || !filmsim_photo_mode()) return;
     int RB = 2 * R + 1;
     int nb = (camera_sensor.raw_rowpix / 8) * 4;     // Bloecke pro Zeile
     int nbr = (camera_sensor.raw_rows - FS_ROW0) / 2; // Blockzeilen
     int rowlen = camera_sensor.raw_rowlen;
+    // The built-in HQ pass operates on cells with their guide inside the image.
+    int hq_x0 = (camera_sensor.active_area.x1 + 1) / 2 + 1;
+    int hq_x1 = camera_sensor.active_area.x2 / 2 - 1;
+    int hq_y0 = (camera_sensor.active_area.y1 + 1 - FS_ROW0) / 2 + 1;
+    int hq_y1 = (camera_sensor.active_area.y2 - FS_ROW0) / 2 - 1;
     if (!wbdiv_init()) { shot_skip |= SKIP_CNR; return; }
     short *ring_r = malloc(RB * nb * sizeof(short));
     short *ring_b = malloc(RB * nb * sizeof(short));
@@ -2503,7 +2657,7 @@ static void filmsim_cnr_apply(char *raw)
     int *vb = malloc(nb * sizeof(int));
     int *vl = malloc(nb * sizeof(int));
     if (!ring_r || !ring_b || !ring_l || !vr || !vb || !vl) { shot_skip |= SKIP_CNR; goto out; }
-    const int dmax = (R == 2) ? 170 : 250;           // ab dieser Farbabweichung: Kante, nicht Rauschen
+    const int dmax = hq_strength ? 96 : (R == 2 ? 170 : 250); // larger chroma differences are edges
     const int invd = 65536 / dmax;
     if (!cnr_recip && (cnr_recip = malloc(512 * sizeof(int)))) { int t; cnr_recip[0] = 0; for (t = 1; t < 512; t++) cnr_recip[t] = 65536 / t; }
     if (!cnr_recip) { shot_skip |= SKIP_CNR; goto out; }
@@ -2512,6 +2666,8 @@ static void filmsim_cnr_apply(char *raw)
 
     for (j = 0; j < nbr; j++) {
         prog_rows(j, nbr);
+        if (hq_strength && (j < hq_y0 || j >= hq_y1))
+            continue;
         // benoetigte Zeilen bis j+R berechnen (Originaldaten, noch unveraendert)
         int need = j + R; if (need > nbr - 1) need = nbr - 1;
         while (computed <= need) {
@@ -2538,7 +2694,8 @@ static void filmsim_cnr_apply(char *raw)
             dec8(a0, p); dec8(a1, q);
             for (k = 0; k < 8; k += 2, i++) {
                 int Rv = p[k], G1 = p[k+1], G2 = q[k], Bv = q[k+1];
-                if (Rv && G1 && G2 && Bv && Rv < CNR_CLIP && G1 < CNR_CLIP && G2 < CNR_CLIP && Bv < CNR_CLIP) {
+                if (Rv && G1 && G2 && Bv && Rv < CNR_CLIP && G1 < CNR_CLIP && G2 < CNR_CLIP && Bv < CNR_CLIP
+                    && (!hq_strength || (i >= hq_x0 && i < hq_x1))) {
                     int gg = ((G1 + G2) >> 1) - BLK;
                     int crs = (sumr * inv + 32768) >> 16;
                     int cbs = (sumb * inv + 32768) >> 16;
@@ -2553,10 +2710,19 @@ static void filmsim_cnr_apply(char *raw)
                     int w2 = 256 - ((dc * invd) >> 8);
                     if (w2 < w) w = w2;
                     if (w < 0) w = 0;
-                    crs = own_r[i] + ((dr_ * w) >> 8);
-                    cbs = own_b[i] + ((db_ * w) >> 8);
-                    int nr = clip10(div_wb_r(gg + crs) + BLK);
-                    int nbv = clip10(div_wb_b(gg + cbs) + BLK);
+                    int nr, nbv;
+                    if (hq_strength) {
+                        // Remove only the local sensor chroma residual. Both
+                        // greens and the original R/B baselines stay intact.
+                        w = (w * hq_strength + 128) >> 8;
+                        nr = clip10(Rv + div_wb_r((dr_ * w + 128) >> 8));
+                        nbv = clip10(Bv + div_wb_b((db_ * w + 128) >> 8));
+                    } else {
+                        crs = own_r[i] + ((dr_ * w) >> 8);
+                        cbs = own_b[i] + ((db_ * w) >> 8);
+                        nr = clip10(div_wb_r(gg + crs) + BLK);
+                        nbv = clip10(div_wb_b(gg + cbs) + BLK);
+                    }
                     p[k] = nr ? nr : 1;
                     q[k+1] = nbv ? nbv : 1;
                     changed = 1;
@@ -2632,7 +2798,11 @@ const char* filmsim_cnr_enum(int change, __attribute__ ((unused))int arg)
     return lang_str(m[i]);
 }
 
+#ifdef FILMSIM_EXFS
+void filmsim_effects_apply_hq(char *raw, const exfs_hq_profile *profile)
+#else
 void filmsim_effects_apply(char *raw)
+#endif
 {
 #ifdef FS_RAW
     if (!raw || !filmsim_photo_mode()) return;
@@ -2640,7 +2810,17 @@ void filmsim_effects_apply(char *raw)
     effects_glow_and_tone(raw);
     filmsim_perf_mark(PERF_GRAIN);
     filmsim_prog_step(PS_GRAIN);
-    effects_grain(raw);
+#ifdef FILMSIM_EXFS
+    if (profile) {
+        int wr, wb;
+        shot_wb_gains(&wr, &wb);
+        if (!exfs_hq_grain(raw, profile, wr, wb))
+            shot_skip |= SKIP_GRAIN;
+    } else
+#endif
+    {
+        effects_grain(raw);
+    }
     filmsim_perf_mark(PERF_FRAME);
     effects_frame(raw);
     filmsim_perf_mark(PERF_DATE_STAMP);
@@ -2650,6 +2830,13 @@ void filmsim_effects_apply(char *raw)
     (void)raw;
 #endif
 }
+
+#ifdef FILMSIM_EXFS
+void filmsim_effects_apply(char *raw)
+{
+    filmsim_effects_apply_hq(raw, NULL);
+}
+#endif
 
 // Menue-Eintraege
 const char* filmsim_mist_enum(int change, __attribute__ ((unused))int arg)
@@ -4211,11 +4398,20 @@ static void prog_plan(void)
     prog_w[PS_HOT] = 15;
     int cl = cnr_level();
     if (cl) prog_w[PS_CNR] = cl == 2 ? 80 : 40;
+    else if (hq_sensor_chroma_strength()) prog_w[PS_CNR] = 25;
     if (s->curve || conf.film_dr) prog_w[PS_CURVE] = 19;
     if (s->mix || bw) prog_w[PS_MIX] = 50;
     if (conf.film_halation) prog_w[PS_GLOW] = conf.film_mist ? 260 : 230;
     else if (conf.film_mist) prog_w[PS_GLOW] = 120;
     else if (conf.film_vignette || conf.film_leak) prog_w[PS_GLOW] = 40;
+#ifdef FILMSIM_EXFS
+    const exfs_hq_profile *profile = exfs_hq_active_profile();
+    if (profile) {
+        if (exfs_hq_grain_enabled(profile))
+            prog_w[PS_GRAIN] = 140;
+        return;
+    }
+#endif
     if (grain_pct10()) prog_w[PS_GRAIN] = 90;
 }
 
