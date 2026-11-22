@@ -24,7 +24,7 @@ On the PowerShot A620, **EXCCD+ → EXFS** enables the optional
 ExFilmSim Engine. The checkbox defaults to off, which selects the original
 EXCCD engine. EXFS uses the same recipes and Canon JPEG processing. It speeds
 up the RAW hot-pixel scan, RGB tone curves, and white-balance correction after
-RAW development.
+RAW development. It uses the regular EXCCD Grain effect when enabled.
 
 These timings were measured on the A620 1.00f with **Kodak Gold 200**, from RAW
 handling to the final JPEG close. The first two rows compare one capture per engine.
@@ -36,6 +36,12 @@ handling to the final JPEG close. The first two rows compare one capture per eng
 | Single photo (EXFS HQ 1.0) | — | 40.19 s (HQ) | — | 1.16 s (HQ) |
 
 ### ExFilmSim High Quality (EXFS HQ 1.0)
+
+EXFS HQ 1.0 shares the EXFS renderer and adds a separate grain model for
+**Kodak Gold 200**. Both engines use the Gold 200 colour recipe and Canon's
+JPEG processing. HQ uses its own grain controls in place of the regular
+Grain setting. Other looks use EXFS while HQ stays selected for the next
+compatible look.
 
 On the A620, enable **EXFS HQ 1.0** in the **EXCCD+** menu. Enabling
 either EXFS checkbox clears the other. With both cleared, the camera uses
@@ -49,14 +55,29 @@ off. **FUNC/SET** saves and returns to the picker. Press **FUNC/SET** again
 to select the highlighted recipe. **MENU** in the grain settings cancels
 pending changes.
 
-Gold 200 HQ uses the supplied scans as a reference for irregular,
-mostly luminance grain. The default is strongest in midtones, moderate
-in shadows, and weakest in highlights. The grain softens over fine
-detail and remains visible at edges. With HQ grain enabled, Gold 200
-uses gentle sensor chroma cleanup when the Color Noise Filter would
-otherwise be off. It uses its own saved grain levels in place of the
-regular Grain setting. Other looks use EXFS with their usual settings
-while EXFS HQ stays selected for the next compatible look.
+#### How HQ grain is applied
+
+1. **Clean up sensor colour noise before the tone curve.** When HQ grain is
+   enabled and the regular Color Noise Filter is off, HQ applies a light,
+   edge-aware filter to the differences between red or blue and green in a
+   3×3 neighbourhood of Bayer cells. The green samples keep their original
+   detail. An active Color Noise Filter uses its selected strength for this
+   step. [Chroma filter](core/filmsim.c)
+2. **Generate irregular grain on the 10-bit RAW image.** After the tone curve
+   and any glow effects, a per-shot xorshift generator creates a random
+   brightness offset for each 2×2 Bayer cell. Each cell mixes in its four
+   neighbours with a randomly varied weight to produce clumps of different
+   sizes. Fine variation within each cell and small colour offsets give
+   the mostly luminance grain its texture. **Size** shifts the balance between
+   fine grain and clumps, and **Color** controls the added colour variation.
+   [Grain implementation](core/exfilmsim_hq.c)
+3. **Shape the grain by tone and detail.** A Gold 200 profile tuned from
+   reference scans gives the midtones the most texture, the shadows moderate
+   texture, and the highlights very little. **Amount** scales the grain
+   across those tones. A local green-channel detail estimate can taper the
+   grain by up to 25%, so it stays visible around edges. HQ accounts for white
+   balance when adding the offsets to the sensor values, then Canon demosaics
+   the image and makes the JPEG. [RAW processing order](core/exfilmsim.c)
 
 In the EXFS HQ 1.0 timing above, colour noise reduction took 18.33 s and
 grain took 16.45 s.

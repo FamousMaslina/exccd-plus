@@ -11,9 +11,3 @@
 - Use the same grammar, writing style, and update-log format as the previous EXCCD+ releases.
 - Update the root `README.md` for every release. Follow the existing structure and version entry format.
 - Publish source-only releases without firmware ZIPs or installer binaries attached.
-
-## Releases
-
-- Use the same grammar, writing style, and update-log format as the previous EXCCD+ releases.
-- Update the root `README.md` for every release. Follow the existing structure and version entry format.
-- Publish source-only releases without firmware ZIPs or installer binaries attached.
