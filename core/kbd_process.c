@@ -140,6 +140,7 @@ static void filmsim_poweroff_hold()
 long kbd_process()
 {
     static int key_pressed;
+    static long alt_press_key;
 #ifdef FILMSIM_QUICK_BUTTONS
     static int quick_key;
 #endif
@@ -223,30 +224,38 @@ long kbd_process()
  
 	if ( key_pressed  && !usb_remote_active ) 
 	{
-        if (kbd_is_key_pressed(conf.alt_mode_button)
+        if (kbd_is_key_pressed(alt_press_key)
                 || ((key_pressed >= CAM_EMUL_KEYPRESS_DELAY)
                 && (key_pressed < CAM_EMUL_KEYPRESS_DELAY+CAM_EMUL_KEYPRESS_DURATION)))
         {
             if (key_pressed <= CAM_EMUL_KEYPRESS_DELAY+CAM_EMUL_KEYPRESS_DURATION) 
                 key_pressed++;
             if (key_pressed == CAM_EMUL_KEYPRESS_DELAY) 
-                kbd_key_press(conf.alt_mode_button);
+                kbd_key_press(alt_press_key);
             else if (key_pressed == CAM_EMUL_KEYPRESS_DELAY+CAM_EMUL_KEYPRESS_DURATION) 
-                kbd_key_release(conf.alt_mode_button);
+                kbd_key_release(alt_press_key);
             return 1;
         } 
         else if (kbd_get_pressed_key() == 0)
         {
             if (key_pressed < CAM_EMUL_KEYPRESS_DELAY)
             {
-                if (!kbd_blocked)
-                {
-                    // if start script on alt set, flag to run it
-                    if(conf.script_startup==SCRIPT_AUTOSTART_ALT) script_run_on_alt_flag = 1;
-                    enter_alt(camera_info.state.state_kbd_script_run);
+                int print_mode = ALT_MODE_NORMAL;
+#ifdef FILMSIM_QUICK_BUTTONS
+                if (alt_press_key == KEY_PRINT && !camera_info.state.state_kbd_script_run)
+                    print_mode = filmsim_quick_print_mode(kbd_blocked);
+#endif
+                if (print_mode != ALT_MODE_NORMAL) {
+                    enter_alt_mode(print_mode);
+                } else if (alt_press_key == conf.alt_mode_button) {
+                    if (!kbd_blocked) {
+                        // if start script on alt set, flag to run it
+                        if(conf.script_startup==SCRIPT_AUTOSTART_ALT) script_run_on_alt_flag = 1;
+                        enter_alt(camera_info.state.state_kbd_script_run);
+                    } else {
+                        exit_alt();
+                    }
                 }
-                else
-                    exit_alt();
             }
             key_pressed = 0;
             return 1;
@@ -258,8 +267,16 @@ long kbd_process()
     if (camera_info.state.is_shutter_half_press && kbd_is_key_pressed(conf.alt_mode_button)) 
         return 0;
 
-    if (kbd_is_key_pressed(conf.alt_mode_button)) 
+    long alt_key = conf.alt_mode_button;
+#ifdef FILMSIM_QUICK_BUTTONS
+    if (alt_key != KEY_PRINT && !kbd_is_key_pressed(alt_key) && kbd_is_key_pressed(KEY_PRINT)
+        && !usb_remote_active && !camera_info.state.state_kbd_script_run
+        && filmsim_quick_print_mode(kbd_blocked) != ALT_MODE_NORMAL)
+        alt_key = KEY_PRINT;
+#endif
+    if (kbd_is_key_pressed(alt_key))
 	{
+        alt_press_key = alt_key;
         key_pressed = 1;
         kbd_key_release_all();          
         return 1;

@@ -3350,6 +3350,8 @@ void gui_activate_alt_mode()
 #ifdef FILMSIM_QUICK_BUTTONS
     case ALT_MODE_ENTER_FILM:
     case ALT_MODE_ENTER_ISO:
+    case ALT_MODE_ENTER_PRINT_ISO:
+    case ALT_MODE_ENTER_PRINT_FILM:
         vid_turn_off_updates();
         gui_user_menu_flag = 0;
         if (!filmsim_quick_open(state))

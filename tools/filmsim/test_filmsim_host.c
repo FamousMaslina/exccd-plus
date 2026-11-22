@@ -157,7 +157,8 @@ int shooting_get_prop(int id) { return props[id & 511]; }
 void shooting_set_prop(int id, int v) { props[id & 511] = (short)v; }
 short shooting_get_iso_market() { return 100; }
 short shooting_get_canon_iso_mode(void) { return 0; }
-void shooting_set_iso_mode(int v) { (void)v; }
+static int selected_iso_mode;
+void shooting_set_iso_mode(int v) { selected_iso_mode = v; }
 
 // Belichtung fuer die Auto-ISO (APEX, 1/96 EV); Kamera: ISO 100..800, 35 mm Weitwinkel
 #include <math.h>
@@ -235,7 +236,8 @@ int shooting_in_progress() { return camera_info.state.state_shooting_progress !=
 int shooting_is_flash_ready() { return 1; }
 long kbd_get_pressed_key() { return 0; }
 void kbd_key_release_all() { }
-long kbd_is_key_clicked(long k) { (void)k; return 0; }
+static long clicked_key;
+long kbd_is_key_clicked(long k) { return k && k == clicked_key; }
 #ifdef FILMSIM_JPEG_PAIR
 static long injected_key;
 static int pair_errors;
@@ -544,6 +546,8 @@ static void scenario_quick_buttons(void)
         CHECK(filmsim_quick_mode(KEY_LEFT) == ALT_MODE_ENTER_FILM, "Film shortcut unavailable in mode %d", enabled[i]);
         CHECK(filmsim_quick_mode(KEY_RIGHT) == ALT_MODE_ENTER_ISO, "ISO shortcut unavailable in mode %d", enabled[i]);
         CHECK(filmsim_quick_open(ALT_MODE_ENTER_ISO), "ISO picker failed to open in mode %d", enabled[i]);
+        CHECK(filmsim_quick_print_mode(0) == ALT_MODE_NORMAL && filmsim_quick_print_mode(1) == ALT_MODE_NORMAL,
+              "Print changed behavior in an arrow shortcut mode %d", enabled[i]);
     }
     for (unsigned i = 0; i < sizeof(disabled) / sizeof(disabled[0]); i++) {
         camera_info.state.mode_shooting = disabled[i];
@@ -579,6 +583,43 @@ static void scenario_quick_buttons(void)
     canon_shoot_menu_active = 1;
     CHECK(filmsim_quick_mode(KEY_LEFT) == ALT_MODE_NORMAL && filmsim_quick_mode(KEY_RIGHT) == ALT_MODE_NORMAL,
           "Shortcuts intercepted Canon's FUNC menu");
+    canon_shoot_menu_active = 0;
+    cur_mode = 0;
+
+    static const int print_modes[] = { MODE_TV, MODE_AV, MODE_M, MODE_NIGHT_SNAPSHOT, MODE_INDOOR };
+    for (unsigned i = 0; i < sizeof(print_modes) / sizeof(print_modes[0]); i++) {
+        camera_info.state.mode_shooting = print_modes[i];
+        CHECK(filmsim_quick_print_mode(0) == ALT_MODE_ENTER_PRINT_ISO, "Print did not route to ISO in mode %d", print_modes[i]);
+        if (!filmsim_quick_open(ALT_MODE_ENTER_PRINT_ISO)) {
+            CHECK(0, "Print ISO picker failed to open in mode %d", print_modes[i]);
+            return;
+        }
+        cur_mode->redraw(1);
+        CHECK(strstr(drawn, lang_str(LANG_EXCCD_PRINT_FOR_RECIPES)), "Print ISO picker lacks the recipe hint");
+        CHECK(filmsim_quick_print_mode(1) == ALT_MODE_ENTER_PRINT_FILM, "Second Print did not route to recipes");
+        CHECK(filmsim_quick_open(ALT_MODE_ENTER_PRINT_FILM), "Second Print failed to open the film picker");
+        CHECK(filmsim_quick_print_mode(1) == ALT_MODE_NORMAL, "Print reopened a shortcut from the film picker");
+        cur_mode = 0;
+    }
+
+    camera_info.state.mode_shooting = MODE_TV;
+    if (filmsim_quick_open(ALT_MODE_ENTER_PRINT_ISO)) {
+        selected_iso_mode = -1;
+        clicked_key = KEY_RIGHT;
+        cur_mode->kbd_process();
+        clicked_key = KEY_SET;
+        cur_mode->kbd_process();
+        clicked_key = 0;
+        CHECK(selected_iso_mode == 1, "Print ISO picker did not select and apply ISO with Right and SET");
+    } else {
+        CHECK(0, "Could not open Print ISO picker for ISO selection test");
+    }
+
+    CHECK(filmsim_quick_iso_open(), "Manual ISO picker failed to reopen");
+    CHECK(filmsim_quick_print_mode(1) == ALT_MODE_NORMAL, "Manual ISO picker hijacked Print");
+    camera_info.state.mode_rec = 0;
+    camera_info.state.mode_play = 1;
+    CHECK(filmsim_quick_print_mode(0) == ALT_MODE_NORMAL, "Print shortcut intercepted playback");
 }
 #endif
 

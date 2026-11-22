@@ -35,6 +35,8 @@ enum ALT_Mode_State {
     ALT_MODE_LEAVE,         // leave ALT mode
     ALT_MODE_ENTER_FILM,
     ALT_MODE_ENTER_ISO,
+    ALT_MODE_ENTER_PRINT_ISO,
+    ALT_MODE_ENTER_PRINT_FILM,
 };
 
 extern void gui_set_alt_mode_state(int);    // Called from KBD task to tell GUI task what state to set

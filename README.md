@@ -2,7 +2,7 @@
 # EXCCD+
 <img width="900" height="300" alt="exccdplus" src="https://github.com/user-attachments/assets/167387f4-b2bd-4155-afc7-9e13be0f9175" />
 
-EXCCD+ v1.1.0 combines the original [CHDK](https://chdk.fandom.com/) menu and script loader
+EXCCD+ v1.1.1 combines the original [CHDK](https://chdk.fandom.com/) menu and script loader
 with the film looks from [EXCCD v1.10.2](https://github.com/35mmSebas/exccd). Each look
 combines Canon's *My Colors* settings with a tone curve applied before the camera creates the JPEG.
 
@@ -20,7 +20,7 @@ firmware version, and any test results.
 
 ## ExFilmSim Engine (EXFS)
 
-On the PowerShot A620, **Print → MENU → EXCCD+ → EXFS** enables the optional
+On the PowerShot A620, **EXCCD+ → EXFS** enables the optional
 ExFilmSim Engine. The checkbox defaults to off, which selects the original
 EXCCD engine. EXFS uses the same recipes and Canon JPEG processing. It speeds
 up the RAW hot-pixel scan, RGB tone curves, and white-balance correction after
@@ -36,6 +36,10 @@ compares one capture per engine, from RAW handling to the final JPEG close.
 
 ## What's new
 
+- **v1.1.1** Add a two-tap **Print** shortcut for the A620's other still-photo modes.
+  The first tap opens **Quick ISO**, and the next tap opens the film picker. The
+  **Left/Right** shortcuts are available in **P**, **Night Scene**, **Landscape**,
+  **Portrait**, and **Auto**.
 - **v1.1.0** Add **ExFilmSim Engine**, **Performance Metrics**, **Kodak Gold 200**, and
   **Reggie Porta**. Limit the A620's Quick ISO and film-picker shortcuts to **P**,
   **Night Scene**, **Landscape**, **Portrait**, and **Auto**.
@@ -43,6 +47,8 @@ compares one capture per engine, from RAW handling to the final JPEG close.
   recipe JPEG from the same exposure, both with standard Canon filenames.
 - **v1.0.2** Always export the ISO used for the exposure in JPEG and DNG EXIF, including Auto ISO.
 - **v1.0.1** Show a custom EXCCD+ splash screen on boot.
+- **v1.0.0** Restore the standard CHDK menu and add **Quick ISO**, a configurable
+  shortcut for the film picker, and the **Sony-CFL** look.
 
 ## Looks
 
@@ -134,14 +140,17 @@ noise filter Off. Use Dynamic+2 for highlight protection in automatic exposure m
 
 Build for your camera model and firmware version. For the A620 1.00f, run
 `sh tools/filmsim/build.sh a620` from the repository with the [build tools](#camera-build-requirements)
-on your PATH. Extract the resulting build from `dist/v1.1.0/` to the root of the SD card.
+on your PATH. Extract the resulting build from `dist/v1.1.1/` to the root of the SD card.
 On the A620, start manually in playback with **MENU → Firm Update**. For
 autostart, use **EXCCD+ → System → Make Card Bootable...**, then lock the SD card and restart.
 
 ## Usage
 
-On the A620, a short press of **Print** toggles ALT in shooting or playback. Use **MENU** in
-ALT to open the original CHDK main menu, or **FUNC/SET** to open the script menu directly.
+On the A620, a short press of **Print** toggles ALT in **P**, **Night Scene**, **Landscape**,
+**Portrait**, **Auto**, and playback. In other still-photo modes, press **Print** once for
+**Quick ISO** and again from that screen for the film picker. **MENU** in the film picker opens
+EXCCD+ options, where **Back** returns to normal ALT. Use **MENU** in ALT to open the original
+CHDK main menu, or **FUNC/SET** to open the script menu directly.
 Choose **Load Script from File...**, select a Lua or uBASIC script in `CHDK/SCRIPTS`, and
 press the shutter fully in ALT to run it. `QUICKISO.LUA` is included in that folder.
 
@@ -154,7 +163,7 @@ for example `IMG_8345.JPG` for the original and `IMG_8346.JPG` for the recipe JP
 The original uses the exposure and Canon white balance of that capture. Release the shutter
 to let the helper shot start. With this setting off, the camera saves one JPEG.
 
-To profile a look, open **Print → MENU → EXCCD+ → Performance Metrics** and select **On**.
+To profile a look, open **EXCCD+ → Performance Metrics** and select **On**.
 The selector is available with any EXCCD+ look or a saved recipe selected. Each capture appends
 one row to `CHDK/LOGS/PERF.CSV`. Filter the `mode` column for `single_photo` or
 `keep_original_jpeg`. Paired rows name both JPEGs and show the temporary RAW write and read,

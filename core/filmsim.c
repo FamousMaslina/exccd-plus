@@ -1267,10 +1267,16 @@ static int quick_shortcuts_available(int mode)
         || mode == MODE_PORTRAIT || mode == MODE_AUTO;
 }
 
+static int quick_picker_ready(void)
+{
+    return !camera_info.state.is_shutter_half_press && !recreview_hold
+        && filmsim_picker_allowed() && !shooting_in_progress()
+        && camera_info.state.state_shooting_progress != SHOOTING_PROGRESS_PROCESSING;
+}
+
 int filmsim_quick_mode(int key)
 {
     if ((key != KEY_LEFT && key != KEY_RIGHT) || !camera_info.state.gui_mode_none
-        || camera_info.state.is_shutter_half_press || recreview_hold
         || !quick_shortcuts_available(camera_info.state.mode_shooting))
         return ALT_MODE_NORMAL;
 
@@ -1281,8 +1287,7 @@ int filmsim_quick_mode(int key)
     else if (key == quick_keys[conf.iso_quick_button])
         mode = ALT_MODE_ENTER_ISO;
 
-    if (mode != ALT_MODE_NORMAL && filmsim_picker_allowed() && !shooting_in_progress()
-        && camera_info.state.state_shooting_progress != SHOOTING_PROGRESS_PROCESSING)
+    if (mode != ALT_MODE_NORMAL && quick_picker_ready())
         return mode;
     return ALT_MODE_NORMAL;
 }
@@ -1290,6 +1295,7 @@ int filmsim_quick_mode(int key)
 extern const ISOTable iso_table[];
 extern const unsigned int ISO_SIZE;
 static int quick_iso_mode;
+static int quick_iso_from_print;
 static int quick_iso_first;
 static int quick_iso_selected;
 
@@ -1306,7 +1312,7 @@ static void quick_iso_draw(__attribute__ ((unused))int force)
         return;
     }
     const char *title = lang_str(LANG_EXCCD_QUICK_ISO_TITLE);
-    const int cell_width = 42, height = 51;
+    const int cell_width = 42, height = quick_iso_from_print ? 65 : 51;
     const int count = (int)ISO_SIZE - quick_iso_first;
     const int width = count * cell_width + 28;
     const int x = (camera_screen.width - width) / 2;
@@ -1325,6 +1331,11 @@ static void quick_iso_draw(__attribute__ ((unused))int force)
         draw_string(left + (cell_width - (int)strlen(label) * FONT_WIDTH) / 2,
                     y + 27, label, selected ? MAKE_COLOR(COLOR_WHITE, COLOR_BLACK)
                                               : MAKE_COLOR(COLOR_BLACK, COLOR_WHITE));
+    }
+    if (quick_iso_from_print) {
+        const char *hint = lang_str(LANG_EXCCD_PRINT_FOR_RECIPES);
+        draw_string(x + (width - (int)strlen(hint) * FONT_WIDTH) / 2,
+                    y + 48, hint, MAKE_COLOR(COLOR_BLACK, COLOR_WHITE));
     }
 }
 
@@ -1351,14 +1362,15 @@ static int quick_iso_kbd(void)
 
 static gui_handler quickIsoGuiHandler = { GUI_MODE_MODULE, quick_iso_draw, quick_iso_kbd, exit_alt_on_release, 0, 0 };
 
-int filmsim_quick_iso_open(void)
+static int quick_iso_open(int from_print)
 {
     int mode = camera_info.state.mode_shooting;
     int available = quick_shortcuts_available(mode) || mode == MODE_TV || mode == MODE_AV || mode == MODE_M;
-    if (!available || !filmsim_picker_allowed() || recreview_hold)
+    if ((!from_print && !available) || !filmsim_picker_allowed() || recreview_hold)
         return 0;
 
     quick_iso_mode = mode;
+    quick_iso_from_print = from_print;
     quick_iso_first = mode == MODE_M ? 1 : 0;
     quick_iso_selected = quick_iso_first;
     int current_iso = shooting_get_iso_mode();
@@ -1372,15 +1384,38 @@ int filmsim_quick_iso_open(void)
     return 1;
 }
 
+int filmsim_quick_iso_open(void)
+{
+    return quick_iso_open(0);
+}
+
+int filmsim_quick_print_mode(int in_alt)
+{
+    if (quick_shortcuts_available(camera_info.state.mode_shooting) || !quick_picker_ready())
+        return ALT_MODE_NORMAL;
+    if (!in_alt && camera_info.state.gui_mode_none)
+        return ALT_MODE_ENTER_PRINT_ISO;
+    if (in_alt && quick_iso_from_print && gui_is_mode(&quickIsoGuiHandler) && quick_iso_still_open())
+        return ALT_MODE_ENTER_PRINT_FILM;
+    return ALT_MODE_NORMAL;
+}
+
 int filmsim_quick_open(int state)
 {
     int mode = camera_info.state.mode_shooting;
-    if (!quick_shortcuts_available(mode))
-        return 0;
-    if (state == ALT_MODE_ENTER_ISO)
-        return filmsim_quick_iso_open();
-    if (state != ALT_MODE_ENTER_FILM || !filmsim_picker_allowed())
-        return 0;
+    if (state == ALT_MODE_ENTER_PRINT_ISO || state == ALT_MODE_ENTER_PRINT_FILM) {
+        if (filmsim_quick_print_mode(state == ALT_MODE_ENTER_PRINT_FILM) != state)
+            return 0;
+        if (state == ALT_MODE_ENTER_PRINT_ISO)
+            return quick_iso_open(1);
+    } else {
+        if (!quick_shortcuts_available(mode) || !quick_picker_ready())
+            return 0;
+        if (state == ALT_MODE_ENTER_ISO)
+            return filmsim_quick_iso_open();
+        if (state != ALT_MODE_ENTER_FILM)
+            return 0;
+    }
 
     filmsim_open_menu();
     quick_film_mode = mode;

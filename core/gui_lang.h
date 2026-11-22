@@ -933,8 +933,9 @@
 #define LANG_EXCCD_PERFORMANCE_METRICS          800
 #define LANG_EXCCD_NEEDS_RECIPE                 801
 #define LANG_EXCCD_EXFS                         802
+#define LANG_EXCCD_PRINT_FOR_RECIPES            803
 
-#define GUI_LANG_ITEMS                          802
+#define GUI_LANG_ITEMS                          803
 
 //-------------------------------------------------------------------
 extern void gui_lang_init();
