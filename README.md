@@ -2,7 +2,7 @@
 # EXCCD+
 <img width="900" height="300" alt="exccdplus" src="https://github.com/user-attachments/assets/167387f4-b2bd-4155-afc7-9e13be0f9175" />
 
-EXCCD+ v1.0.3 combines the original [CHDK](https://chdk.fandom.com/) menu and script loader
+EXCCD+ v1.1.0 combines the original [CHDK](https://chdk.fandom.com/) menu and script loader
 with the film looks from [EXCCD v1.10.2](https://github.com/35mmSebas/exccd). Each look
 combines Canon's *My Colors* settings with a tone curve applied before the camera creates the JPEG.
 
@@ -18,8 +18,27 @@ firmware version, and any test results.
 |---|---|---|
 | PowerShot A620 | 1.00f | Primary EXCCD+ build target |
 
+## ExFilmSim Engine (EXFS)
+
+On the PowerShot A620, **Print → MENU → EXCCD+ → EXFS** enables the optional
+ExFilmSim Engine. The checkbox defaults to off, which selects the original
+EXCCD engine. EXFS uses the same recipes and Canon JPEG processing. It speeds
+up the RAW hot-pixel scan, RGB tone curves, and white-balance correction after
+RAW development.
+
+These timings were measured on the A620 1.00f with **Kodak Gold 200**. Each row
+compares one capture per engine, from RAW handling to the final JPEG close.
+
+| Capture mode | Original EXCCD | EXFS | Time saved | RGB tone curve, EXCCD → EXFS |
+|---|---:|---:|---:|---:|
+| Single photo | 6.66 s | 5.85 s | **0.81 s (12.2%)** | 2.25 s → 1.17 s |
+| Save Original JPEG | 14.01 s | 11.95 s | **2.06 s (14.7%)** | 2.26 s → 1.16 s |
+
 ## What's new
 
+- **v1.1.0** Add **ExFilmSim Engine**, **Performance Metrics**, **Kodak Gold 200**, and
+  **Reggie Porta**. Limit the A620's Quick ISO and film-picker shortcuts to **P**,
+  **Night Scene**, **Landscape**, **Portrait**, and **Auto**.
 - **v1.0.3** Add **Save Original JPEG** on the A620. It saves the original Canon JPEG and a
   recipe JPEG from the same exposure, both with standard Canon filenames.
 - **v1.0.2** Always export the ISO used for the exposure in JPEG and DNG EXIF, including Auto ISO.
@@ -77,11 +96,46 @@ The last two files are the DR+1 and DR+2 variants. Append this row to `CHDK/FILM
 Sony-CFL | 11 | 0 | 0 | -1 | 0 | 0 | 0 | 0 | SONYCFL.CV | - | 0
 ```
 
+### Reggie Porta (PowerShot A620)
+
+**Reggie Porta** adapts Reggie Ballesteros's **Reggie's Portra** Classic Chrome recipe for the A620. The curve
+uses the Fuji samples as a visual reference and was previewed on A620 DNG/JPEG pairs. It has
+slightly open shadows, warm highlights and subdued blues. [Reggie's Portra recipe](https://fujixweekly.com/2022/06/11/fujifilm-x-trans-iv-film-simulation-recipe-reggies-portra/)
+
+Generate the curves as above and copy `REGPORT.CV`, `REGPORT1.CV` and `REGPORT2.CV` to
+`CHDK/CURVES/`. Append the row to `CHDK/FILMS/FILMS.TXT` and optionally to `FILMS.BAK` for
+the preset picker. If `FILMS.TXT` is absent, start with a copy of `CHDK/FILMS/EXAMPLE.TXT`.
+
+```text
+Reggie Porta | 11 | 0 | -1 | 0 | 0 | 0 | 0 | 0 | REGPORT.CV | - | 0
+```
+
+For the full recipe, use Auto white balance, Fine grain, Dynamic+ Off and colour noise filter
+Off. The curve already applies the warm cast, so leave WB shift centered. Save those settings
+to a free recipe slot if you want to recall them together.
+
+### Kodak Gold 200 (PowerShot A620)
+
+**Kodak Gold 200** adapts Ritchie Roesch's Classic Chrome recipe for the A620. It adds golden
+midtones, deeper shadows and softer highlights. The curve was previewed on A620 DNG/JPEG pairs.
+[Kodak Gold 200 Fuji recipe](https://fujixweekly.com/2023/10/24/kodak-gold-200-fujifilm-x-t5-x-trans-v-film-simulation-recipe/)
+
+Generate and install `GOLD200.CV`, `GOLD2001.CV` and `GOLD2002.CV` as above, then add this row
+to `CHDK/FILMS/FILMS.TXT` and optionally to `FILMS.BAK`.
+
+```text
+Kodak Gold 200 | 11 | 0 | -2 | 1 | 0 | 0 | 0 | 0 | GOLD200.CV | - | 0
+```
+
+For the full recipe, use Daylight white balance, centered WB shift, Medium grain and colour
+noise filter Off. Use Dynamic+2 for highlight protection in automatic exposure modes.
+
 ## Installation
 
-Use the build for your camera model and firmware version, for example
-`dist/v1.0.3/exccd-plus-v1.0.3-a620-100f-full.zip` for the A620 1.00f. Extract it to the root of
-the SD card. On the A620, start manually in playback with **MENU → Firm Update**. For
+Build for your camera model and firmware version. For the A620 1.00f, run
+`sh tools/filmsim/build.sh a620` from the repository with the [build tools](#camera-build-requirements)
+on your PATH. Extract the resulting build from `dist/v1.1.0/` to the root of the SD card.
+On the A620, start manually in playback with **MENU → Firm Update**. For
 autostart, use **EXCCD+ → System → Make Card Bootable...**, then lock the SD card and restart.
 
 ## Usage
@@ -100,17 +154,31 @@ for example `IMG_8345.JPG` for the original and `IMG_8346.JPG` for the recipe JP
 The original uses the exposure and Canon white balance of that capture. Release the shutter
 to let the helper shot start. With this setting off, the camera saves one JPEG.
 
+To profile a look, open **Print → MENU → EXCCD+ → Performance Metrics** and select **On**.
+The selector is available with any EXCCD+ look or a saved recipe selected. Each capture appends
+one row to `CHDK/LOGS/PERF.CSV`. Filter the `mode` column for `single_photo` or
+`keep_original_jpeg`. Paired rows name both JPEGs and show the temporary RAW write and read,
+original JPEG processing, and wait for the helper capture.
+
+The `_ms` columns report elapsed milliseconds. A blank means the stage was unused or timing
+was unavailable. A zero means the timer did not advance during that stage. On the A620,
+`raw_to_output_ms` includes the final JPEG close when it was observed. The JPEG columns
+include Canon processing and the card write. On other cameras, timing ends at the RAW handoff
+to Canon.
+
 - **Show All Film Recipes** opens the film picker with the full `FILMS.TXT` catalogue, or the 26 built-in looks if that file is absent.
 - **Select Only Presets** opens the same picker with the looks in `CHDK/FILMS/FILMS.BAK`.
   Both lists include **Off**. The last list you choose becomes the default for **Film selection...**
   and the quick-open button. Choosing a list keeps the active look until you select another.
 - On the **A620 only**, a single **Left** press opens the film picker and a single **Right** press
-  opens **Quick ISO** from the Canon shooting screen. In **ALT → FUNC/SET**, set **EXCCD+ Quick Open Button**
+  opens **Quick ISO** from the Canon shooting screen in **P**, **Night Scene**, **Landscape**,
+  **Portrait**, and **Auto**. Other shooting modes use Canon's button controls.
+  In **ALT → FUNC/SET**, set **EXCCD+ Quick Open Button**
   and **Quick ISO Button** to **Left**, **Right**, or **None**. A button can belong to only one shortcut.
   To swap them, set one to **None**, remap the other, and then assign the free button.
-- On the **A620**, in **Quick ISO**, use Left and Right to change the selection. Press **FUNC/SET** or half-press
-  the shutter to apply, or press **MENU** to cancel. The picker is available in **P**, **Tv**,
-  **Av**, and **M**. When the shortcut is disabled, use **MENU → EXCCD+ → Quick ISO...** in ALT.
+- On the **A620**, in **Quick ISO**, use Left and Right to change the selection. Press **FUNC/SET**
+  or half-press the shutter to apply, or press **MENU** to cancel. Open it manually through
+  **MENU → EXCCD+ → Quick ISO...** in ALT, including in **Tv**, **Av**, and **M**.
 
 | Button | In the film picker |
 |---|---|
@@ -175,6 +243,12 @@ format). `wb = keep` leaves the camera's white balance as it is. Mistakes in the
 `A/CHDK/FILMS/RECIPES.LOG`, and so does the reason when saving fails (file over 8 KB or
 unreadable, card full). Saving on the camera rewrites the file, so your own comments in it
 are lost.
+
+To compare engines on the A620, enable **Performance Metrics** and take the same
+set of shots with **EXFS** off and then on. Keep the recipe, capture mode, and RAW
+output settings the same. Use the JPEG numbers to identify each set in
+`CHDK/LOGS/PERF.CSV` and compare `hot_pixels_ms`, `tone_curve_ms`,
+`white_balance_ms`, and `raw_to_output_ms`.
 
 ## Camera build requirements
 

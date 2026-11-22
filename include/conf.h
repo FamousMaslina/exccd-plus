@@ -491,6 +491,8 @@ typedef struct
     int film_quick_button;
     int iso_quick_button;
     int film_save_original_jpeg;
+    int film_performance_metrics;
+    int film_exfs;
 
 } Conf;
 

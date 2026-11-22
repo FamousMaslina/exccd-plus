@@ -83,3 +83,4 @@
     #define FILMSIM_DIAG                1
     #define FILMSIM_QUICK_BUTTONS       1
     #define FILMSIM_JPEG_PAIR           1
+    #define FILMSIM_EXFS                1

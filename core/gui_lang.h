@@ -930,8 +930,11 @@
 #define LANG_EXCCD_ISO_MODE_REQUIRED            797
 #define LANG_EXCCD_SAVE_ORIGINAL_JPEG           798
 #define LANG_EXCCD_JPEG_PAIR_FAILED             799
+#define LANG_EXCCD_PERFORMANCE_METRICS          800
+#define LANG_EXCCD_NEEDS_RECIPE                 801
+#define LANG_EXCCD_EXFS                         802
 
-#define GUI_LANG_ITEMS                          799
+#define GUI_LANG_ITEMS                          802
 
 //-------------------------------------------------------------------
 extern void gui_lang_init();

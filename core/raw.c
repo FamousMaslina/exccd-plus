@@ -14,6 +14,9 @@
 #include "script_api.h" // for script hook
 #include "filmsim.h"
 #include "jpeg_iso.h"
+#ifdef FILMSIM_EXFS
+#include "exfilmsim.h"
+#endif
 
 //-------------------------------------------------------------------
 #ifdef CAM_DATE_FOLDER_NAMING
@@ -250,10 +253,18 @@ void raw_process(void)
 #endif
     if (developing)
     {
+#ifdef FILMSIM_JPEG_PAIR
+        if (pair_helper)
+            filmsim_pair_perf_helper_begin();
+        else
+#endif
+            filmsim_perf_begin(FILMSIM_PERF_DEVELOP);
+
         // Effekte der Entwicklung einsetzen, Fortschrittsbalken zeigen (bis filmsim_develop_end)
-        extern void filmsim_develop_prepare(void);
+        filmsim_perf_mark(PERF_DEVELOP_SETUP);
         filmsim_develop_prepare();
         started();
+        filmsim_perf_mark(PERF_RAW_LOAD);
         int loaded = 0;
         if (develop_raw == RAW_DEVELOP_DNG)
         {
@@ -267,6 +278,7 @@ void raw_process(void)
                 close(fd);
             }
         }
+        filmsim_perf_mark(PERF_NONE);
         finished();
         develop_raw = RAW_DEVELOP_OFF;
         // Haelt filmsim_tick zurueck, bis Canon das JPEG fertig hat
@@ -275,24 +287,29 @@ void raw_process(void)
         if (pair_helper) {
             filmsim_pair_helper_raw(loaded);
             if (!loaded) {
-                extern void filmsim_develop_end(char *raw);
                 filmsim_develop_end(NULL);
                 return;
             }
             extern void filmsim_badcols_apply(void);
+            filmsim_perf_mark(PERF_BAD_PIXELS);
             patch_bad_pixels();
             filmsim_badcols_apply();
         }
 #endif
+        filmsim_perf_mark(PERF_DEVELOP_SETUP);
         filmsim_develop_begin(rawadr);
+        filmsim_perf_mark(PERF_NONE);
     }
     else
     {
 
     if (!pair_original) {
+        filmsim_perf_begin(FILMSIM_PERF_SINGLE);
+        filmsim_perf_mark(PERF_BAD_PIXELS);
         patch_bad_pixels();
         extern void filmsim_badcols_apply(void);
         filmsim_badcols_apply();
+        filmsim_perf_mark(PERF_NONE);
     }
 
     shooting_bracketing();
@@ -311,7 +328,9 @@ void raw_process(void)
     if (remotecap_get_target())
     {
         camera_info.state.state_shooting_progress = SHOOTING_PROGRESS_PROCESSING;
+        filmsim_perf_mark(PERF_RAW_OUTPUT);
         remotecap_raw_available(rawadr);
+        filmsim_perf_mark(PERF_NONE);
     }
     else if (!(conf.raw_save_first_only && camera_info.state.state_shooting_progress == SHOOTING_PROGRESS_PROCESSING))
     {
@@ -320,45 +339,53 @@ void raw_process(void)
         if (conf.save_raw && is_raw_enabled())
         {
             // Filmsim: Dynamik+-Stufe im DNG-Kopf vermerken (spaetere Entwicklung)
+            filmsim_perf_mark(PERF_RAW_OUTPUT);
             if (raw_savefile(rawadr,altrawadr) && conf.dng_raw)
                 raw_closefile(filmsim_dng_mark(fn));
+            filmsim_perf_mark(PERF_NONE);
         }
     }
 
-    if (pair_original)
+    if (pair_original) {
+        filmsim_perf_raw_done(1);
         return;
+    }
 
     }
 
+#ifdef FILMSIM_EXFS
+    if (conf.film_exfs) {
+        exfs_render(rawadr, developing, pair_helper);
+    } else
+#endif
+    {
     // Filmsim: Fortschrittsbalken der normalen Aufnahme planen (Entwickeln hat ihn schon)
-    extern void filmsim_shot_prepare(void);
-    extern void filmsim_shot_end(void);
     if (!developing)
         filmsim_shot_prepare();
 
-    // Filmsim: Zeitmessung der folgenden Schritte (A/CHDK/FILMTIME.CSV)
-    extern void filmsim_time_mark(int i);
-    extern void filmsim_time_log(void);
-    filmsim_time_mark(0);
-
     // Filmsim: heisse Pixel entfernen (vor allem anderen, sonst werden sie verstaerkt)
     extern void filmsim_hotpix_hook(char *raw);
+    filmsim_perf_mark(PERF_HOT_PIXELS);
+    filmsim_prog_step(PS_HOT);
     filmsim_hotpix_hook(rawadr);
-    filmsim_time_mark(1);
 
     // Filmsim: Doppelbelichtung (vor Kurven, damit der Look nur einmal wirkt)
     extern void filmsim_double_hook(char *raw);
+    filmsim_perf_mark(PERF_DOUBLE);
+    filmsim_prog_step(PS_DOUBLE);
     if (!developing || pair_helper)
         filmsim_double_hook(rawadr);
-    filmsim_time_mark(2);
 
     // Filmsim: Farbrauschen glaetten (vor Kurven, im linearen Rohbild)
     extern void filmsim_cnr_hook(char *raw);
+    filmsim_perf_mark(PERF_COLOR_NR);
+    filmsim_prog_step(PS_CNR);
     filmsim_cnr_hook(rawadr);
-    filmsim_time_mark(3);
 
     // Filmsim: ohne knappere Belichtung (Blitz, Tv-Override) keine Dynamik+-Kurve
     extern void filmsim_dr_curve_hook(int end);
+    filmsim_perf_mark(PERF_CURVE);
+    filmsim_prog_step(PS_CURVE);
     filmsim_dr_curve_hook(0);
 
 #ifdef OPT_CURVES
@@ -370,31 +397,36 @@ void raw_process(void)
     extern void filmsim_curve_apply(char *raw);
     filmsim_curve_apply(rawadr);
 #endif
-    filmsim_time_mark(4);
 
     // Filmsim: Kanalmischung fuer Spezialfilme (nach den Kurven, vor dem JPEG)
     extern void filmsim_raw_apply(char *raw);
+    filmsim_perf_mark(PERF_MIX);
+    filmsim_prog_step(PS_MIX);
     filmsim_raw_apply(rawadr);
-    filmsim_time_mark(5);
+    filmsim_perf_mark(PERF_NONE);
 
     // Filmsim: Kreativeffekte (Mist, Halation, Vignette, Light Leak, Datum)
     extern void filmsim_effects_apply(char *raw);
+    filmsim_prog_step(PS_GLOW);
     filmsim_effects_apply(rawadr);
-    filmsim_time_mark(6);
     if (developing)
     {
-        extern void filmsim_develop_end(char *raw);
+        filmsim_perf_mark(PERF_WHITE_BALANCE);
         filmsim_develop_end(rawadr);
+        filmsim_perf_mark(PERF_NONE);
     }
     else
         filmsim_shot_end();
+    }
 
     // Filmsim: Film zum Foto ins Logbuch schreiben
     extern void filmsim_log_shot(void);
+    filmsim_perf_mark(PERF_FILM_LOG);
     filmsim_log_shot();
-    filmsim_time_log();
+    filmsim_perf_mark(PERF_NONE);
 
     filmsim_dr_curve_hook(1);
+    filmsim_perf_raw_done(0);
 }
 
 //-------------------------------------------------------------------

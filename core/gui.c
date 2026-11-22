@@ -2528,6 +2528,10 @@ static CMenuItem exccd_menu_items[] = {
 #ifdef FILMSIM_JPEG_PAIR
     MENU_ITEM   (0x5c,LANG_EXCCD_SAVE_ORIGINAL_JPEG,         MENUITEM_ENUM,      filmsim_pair_enum, 0 ),
 #endif
+    MENU_ITEM   (0x5c,LANG_EXCCD_PERFORMANCE_METRICS,        MENUITEM_ENUM,      filmsim_perf_enum, 0 ),
+#ifdef FILMSIM_EXFS
+    MENU_ITEM   (0x5c,LANG_EXCCD_EXFS,                       MENUITEM_BOOL,      &conf.film_exfs, 0 ),
+#endif
     MENU_ITEM   (0x0,(int)"",                               MENUITEM_SEPARATOR, 0, 0 ),
     MENU_ITEM   (0x61,LANG_EXCCD_SHUTTER,                   MENUITEM_ENUM,      gui_filmsim_tv_enum, 0 ),
     MENU_ITEM   (0x61,LANG_EXCCD_AISO,                      MENUITEM_ENUM,      filmsim_aiso_enum, 0 ),
@@ -3348,14 +3352,8 @@ void gui_activate_alt_mode()
     case ALT_MODE_ENTER_ISO:
         vid_turn_off_updates();
         gui_user_menu_flag = 0;
-        if (state == ALT_MODE_ENTER_FILM) {
-            if (filmsim_picker_allowed())
-                filmsim_open_menu();
-            else
-                exit_alt();
-        } else if (!filmsim_quick_iso_open()) {
+        if (!filmsim_quick_open(state))
             exit_alt();
-        }
         conf_update_prevent_shutdown();
         break;
 #endif

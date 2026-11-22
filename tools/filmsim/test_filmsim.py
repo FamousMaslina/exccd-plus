@@ -29,6 +29,9 @@ def c_str(s):
 
 def generate(out):
     src = open(os.path.join(ROOT, "core", "filmsim.c"), encoding="latin-1").read()
+    with open(os.path.join(ROOT, "core", "exfilmsim_state.c"), encoding="latin-1") as f:
+        state = f.read().replace('#include "filmsim.c"', "")
+    src += "\n#ifdef FILMSIM_EXFS\n" + state + "\n#endif\n"
     lits = []
     def rep(m):
         lits.append(m.group(1))
@@ -66,6 +69,8 @@ def main():
                os.path.join(ROOT, "core", "filmsim_recipe.c"),
                os.path.join(ROOT, "tools", "filmsim", "test_filmsim_host.c"),
                "-o", exe]
+        if plat == "a620":
+            cmd.insert(-2, os.path.join(ROOT, "core", "exfilmsim.c"))
         r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
         if r.returncode:
             print(plat, "Uebersetzen fehlgeschlagen:\n", r.stdout[-6000:])
@@ -73,7 +78,7 @@ def main():
             continue
         scenarios = [("names", str(v)) for v in range(6)] + [("picker",), ("raw",), ("develop",), ("thumb",), ("recipe",), ("aiso",), ("mixwb",)]
         if plat == "a620":
-            scenarios.append(("jpeg_pair",))
+            scenarios.extend([("quick_buttons",), ("jpeg_pair",), ("exfs",), ("exfs_develop",)])
         for scenario in scenarios:
             r = subprocess.run([exe, scenario[0], ROOT] + list(scenario[1:]), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                text=True, encoding="ascii", errors="replace", timeout=600)

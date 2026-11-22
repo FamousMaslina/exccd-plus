@@ -40,11 +40,11 @@ static void prog_rows(int done, int total);
 #include "action_stack.h"
 #include "lang.h"
 #include "gui_lang.h"
+#include "stdio.h"
 #ifdef FILMSIM_JPEG_PAIR
 #include "cachebit.h"
 #include "console.h"
 #include "remotecap_core.h"
-#include "stdio.h"
 #include "usb_remote.h"
 static int pair_use_original(void);
 static void pair_tick(void);
@@ -688,6 +688,8 @@ static int dev_fx_any(void);
 static void recipes_load(void);         // Rezepte (weiter unten)
 static void look_text_update(void);
 static void recipe_osd(char *rc, char *wb);
+static int recipe_active(void);
+static void perf_tick(void);
 
 // Aus filmsim_tick: Kamera im Fotomodus, keine Menues, kein Bild in Arbeit.
 // Canon ist mit dem JPEG fertig, erst jetzt den Film zuruecknehmen
@@ -853,6 +855,9 @@ int filmsim_dng_mark(const char *fn)
 
 // Wird ca. alle 20 ms aus der Hauptschleife aufgerufen
 static gui_handler filmGuiHandler, wbgGuiHandler, devFxGuiHandler;
+#ifdef FILMSIM_QUICK_BUTTONS
+static int quick_film_mode; // Zero for a picker opened from the CHDK menu.
+#endif
 
 void filmsim_tick(void)
 {
@@ -862,6 +867,7 @@ void filmsim_tick(void)
 #ifdef FILMSIM_JPEG_PAIR
     pair_tick();
 #endif
+    perf_tick();
 
     if (camera_info.state.is_shutter_half_press)
         preview_pending = 0;         // Canon hat die Werte jetzt uebernommen
@@ -877,6 +883,12 @@ void filmsim_tick(void)
         || gui_is_mode(&wbgGuiHandler) || gui_is_mode(&devFxGuiHandler))) {
         exit_alt();
     }
+#ifdef FILMSIM_QUICK_BUTTONS
+    else if (quick_film_mode && camera_info.state.mode_shooting != quick_film_mode
+             && gui_is_mode(&filmGuiHandler)) {
+        exit_alt();
+    }
+#endif
 
     filmsim_zoom_tick();
 
@@ -1193,6 +1205,9 @@ static void palette_autosave(void)
 
 void filmsim_open_menu(void)
 {
+#ifdef FILMSIM_QUICK_BUTTONS
+    quick_film_mode = 0;
+#endif
 #ifndef FILMSIM_LABELS
     palette_autosave();
 #endif
@@ -1246,22 +1261,24 @@ static const char* filmsim_quick_button_enum(int change, int iso)
     return lang_str(quick_names[*button]);
 }
 
-static int quick_iso_available(int mode)
+static int quick_shortcuts_available(int mode)
 {
-    return mode == MODE_P || mode == MODE_TV || mode == MODE_AV || mode == MODE_M;
+    return mode == MODE_P || mode == MODE_NIGHT_SCENE || mode == MODE_LANDSCAPE
+        || mode == MODE_PORTRAIT || mode == MODE_AUTO;
 }
 
 int filmsim_quick_mode(int key)
 {
     if ((key != KEY_LEFT && key != KEY_RIGHT) || !camera_info.state.gui_mode_none
-        || camera_info.state.is_shutter_half_press || recreview_hold)
+        || camera_info.state.is_shutter_half_press || recreview_hold
+        || !quick_shortcuts_available(camera_info.state.mode_shooting))
         return ALT_MODE_NORMAL;
 
     filmsim_normalize_quick_buttons();
     int mode = ALT_MODE_NORMAL;
     if (key == quick_keys[conf.film_quick_button])
         mode = ALT_MODE_ENTER_FILM;
-    else if (key == quick_keys[conf.iso_quick_button] && quick_iso_available(camera_info.state.mode_shooting))
+    else if (key == quick_keys[conf.iso_quick_button])
         mode = ALT_MODE_ENTER_ISO;
 
     if (mode != ALT_MODE_NORMAL && filmsim_picker_allowed() && !shooting_in_progress()
@@ -1337,7 +1354,8 @@ static gui_handler quickIsoGuiHandler = { GUI_MODE_MODULE, quick_iso_draw, quick
 int filmsim_quick_iso_open(void)
 {
     int mode = camera_info.state.mode_shooting;
-    if (!quick_iso_available(mode) || !filmsim_picker_allowed() || recreview_hold)
+    int available = quick_shortcuts_available(mode) || mode == MODE_TV || mode == MODE_AV || mode == MODE_M;
+    if (!available || !filmsim_picker_allowed() || recreview_hold)
         return 0;
 
     quick_iso_mode = mode;
@@ -1351,6 +1369,21 @@ int filmsim_quick_iso_open(void)
         }
     }
     gui_set_mode(&quickIsoGuiHandler);
+    return 1;
+}
+
+int filmsim_quick_open(int state)
+{
+    int mode = camera_info.state.mode_shooting;
+    if (!quick_shortcuts_available(mode))
+        return 0;
+    if (state == ALT_MODE_ENTER_ISO)
+        return filmsim_quick_iso_open();
+    if (state != ALT_MODE_ENTER_FILM || !filmsim_picker_allowed())
+        return 0;
+
+    filmsim_open_menu();
+    quick_film_mode = mode;
     return 1;
 }
 #endif
@@ -1642,14 +1675,16 @@ void filmsim_draw_splash(void)
 //-------------------------------------------------------------------
 #include "file_counter.h"
 
-// "100CANON/IMG_0123.JPG;Postcard 100" fuer das aktuelle Foto
-static void shot_line(char *line)
+// Path relative to DCIM for the current capture.
+static int shot_path(char *path)
 {
     char dir[32];
     get_target_dir_name(dir);                     // "A/DCIM/100CANON"
     const char *d = strrchr(dir, '/');
     d = d ? d + 1 : dir;
-    sprintf(line, "%s/IMG_%04d.JPG;%s", d, (int)get_target_file_num(), filmsim_name());
+    int number = get_target_file_num();
+    sprintf(path, "%s/IMG_%04d.JPG", d, number);
+    return number;
 }
 
 void filmsim_log_shot(void)
@@ -1664,7 +1699,8 @@ void filmsim_log_shot(void)
     const char *fn = "A/CHDK/FILMLOG.CSV";
     struct stat st;
     int is_new = (stat(fn, &st) != 0);
-    shot_line(line);
+    shot_path(line);
+    sprintf(line + strlen(line), ";%s", filmsim_name());
     if (dev_name[0] || shot_skip) {     // dritte Spalte: entwickelt aus dieser Datei
         strcat(line, ";");
         strcat(line, dev_name);
@@ -1696,62 +1732,167 @@ void filmsim_log_shot(void)
 }
 
 //-------------------------------------------------------------------
-// Zeitmessung: Rechenzeit der EXCCD-Schritte je Foto in ms
-//   Nur wenn A/CHDK/FILMTIME.CSV auf der Karte liegt (leere Datei anlegen).
-//   Ohne Datei kostet es einen stat() je Foto und schreibt nichts.
-//   raw.c ruft filmsim_time_mark(0..FS_T_STEPS) zwischen den Schritten auf.
+// Performance CSV. The RAW and pair state machines run on SpyTask. The A620
+// filewrite task only supplies the matching JPEG path and its close timestamp.
 //-------------------------------------------------------------------
-//   Dazu der freie Speicher vor und nach den Schritten (in KB): gesamt, groesster
-//   Block und Zahl der Bloecke. Faellt "Largest" ueber viele Fotos, zerfaellt der
-//   Speicher (viele malloc/free je Foto), dann fallen irgendwann Effekte aus.
-#include "meminfo.h"
-#define FILMTIME_CSV "A/CHDK/FILMTIME.CSV"
-#define FS_T_STEPS 6                    // Hotpixel, Doppelb., Farbrauschen, Kurve, Mischung, Effekte
-static int time_on = 0;
-static int time_ms[FS_T_STEPS + 1];
-static cam_meminfo time_mem[2];         // vor Schritt 1, nach dem letzten Schritt
+#define PERF_CSV "A/CHDK/LOGS/PERF.CSV"
+#define PERF_JPEG_TIMEOUT_MS 30000
 
-void filmsim_time_mark(int i)
+static struct {
+    int active;
+    filmsim_perf_mode mode;
+    filmsim_perf_stage stage;
+    unsigned start_tick, stage_tick, end_tick;
+    int ms[PERF_STAGE_COUNT];
+    int number, slot;
+    char custom[48], original[48], look[24];
+    const char *status;
+    int wait_for_pair;
+} perf;
+
+#ifdef FILMSIM_JPEG_PAIR
+static volatile int perf_jpeg_number, perf_jpeg_open, perf_jpeg_closed;
+static volatile unsigned perf_jpeg_close_tick;
+static char perf_jpeg_path[32];
+static filmsim_perf_stage perf_jpeg_stage;
+#endif
+
+static int perf_recipe_available(void)
 {
-    if (i == 0) {
-        struct stat st;
-        time_on = (stat(FILMTIME_CSV, &st) == 0);
-        shot_skip = 0;
-    }
-    if (time_on && i >= 0 && i <= FS_T_STEPS) {
-        if (i == FS_T_STEPS) GetCombinedMemInfo(&time_mem[1]);
-        time_ms[i] = get_tick_count();
-        if (i == 0) GetCombinedMemInfo(&time_mem[0]);
-    }
-    extern void filmsim_prog_step(int k);
-    if (i < FS_T_STEPS) filmsim_prog_step(i + 1);  // Schritt i + 1 beginnt
+    return (conf.film_sim > 0 && film_at(conf.film_sim)) || recipe_active();
 }
 
-void filmsim_time_log(void)
+const char *filmsim_perf_enum(int change, __attribute__((unused)) int arg)
 {
-    char line[200];
-    struct stat st;
-    int i;
-    if (!time_on || stat(FILMTIME_CSV, &st) != 0) return;
-    int fd = open(FILMTIME_CSV, O_RDWR, 0777);
-    if (fd < 0) return;
-    if (st.st_size == 0) {
-        const char *hdr = "File;Film;Hotpixel;Double;ColorNR;Curve;Mix;Effects;Total;"
-                          "FreeKB;MaxKB;Blocks;FreeKB2;MaxKB2;Blocks2\r\n";
-        write(fd, hdr, strlen(hdr));
-    } else {
-        lseek(fd, 0, 2);                          // SEEK_END
+    if (!perf_recipe_available())
+        return lang_str(LANG_EXCCD_NEEDS_RECIPE);
+    if (change)
+        conf.film_performance_metrics = !conf.film_performance_metrics;
+    return lang_str(conf.film_performance_metrics ? LANG_EXCCD_ON : LANG_EXCCD_OFF);
+}
+
+static void perf_write(const char *status)
+{
+    static const char *const modes[] = { "single_photo", "keep_original_jpeg", "raw_develop" };
+    static const char header[] =
+        "mode;status;custom_jpeg;original_jpeg;look;recipe_slot;raw_to_output_ms;"
+        "raw_spool_ms;raw_output_ms;original_jpeg_ms;helper_wait_ms;raw_load_ms;"
+        "develop_setup_ms;bad_pixels_ms;hot_pixels_ms;double_exposure_ms;color_nr_ms;"
+        "tone_curve_ms;channel_mix_ms;glow_tone_ms;grain_ms;frame_ms;date_stamp_ms;"
+        "white_balance_ms;film_log_ms;custom_jpeg_ms\r\n";
+
+    perf.active = 0;
+#ifdef FILMSIM_JPEG_PAIR
+    perf_jpeg_number = 0;
+#endif
+    int fd = open(PERF_CSV, O_WRONLY | O_CREAT, 0777);
+    if (fd < 0)
+        return;
+    int end = lseek(fd, 0, SEEK_END);
+    if (end >= 0 && (end || write(fd, header, sizeof(header) - 1) == sizeof(header) - 1)) {
+        char line[400];
+        char *p = line + sprintf(line, "%s;%s;%s;%s;\"", modes[perf.mode], status,
+                                 perf.custom, perf.original);
+        for (const char *c = perf.look; *c; c++) {
+            if (*c == '"') *p++ = '"';
+            *p++ = *c;
+        }
+        *p++ = '"';
+        *p++ = ';';
+        if (perf.slot) p += sprintf(p, "C%d", perf.slot);
+        p += sprintf(p, ";%u", perf.end_tick - perf.start_tick);
+        for (int i = 0; i < PERF_STAGE_COUNT; i++) {
+            *p++ = ';';
+            if (perf.ms[i] >= 0) p += sprintf(p, "%d", perf.ms[i]);
+        }
+        *p++ = '\r';
+        *p++ = '\n';
+        write(fd, line, p - line);
     }
-    shot_line(line);
-    for (i = 1; i <= FS_T_STEPS; i++)
-        sprintf(line + strlen(line), ";%d", time_ms[i] - time_ms[i - 1]);
-    sprintf(line + strlen(line), ";%d", time_ms[FS_T_STEPS] - time_ms[0]);
-    for (i = 0; i < 2; i++)
-        sprintf(line + strlen(line), ";%d;%d;%d", time_mem[i].free_size >> 10,
-                time_mem[i].free_block_max_size >> 10, time_mem[i].free_block_count);
-    strcat(line, "\r\n");
-    write(fd, line, strlen(line));
     close(fd);
+}
+
+#ifdef FILMSIM_JPEG_PAIR
+static void perf_collect_jpeg(void)
+{
+    if (!perf_jpeg_number || !perf_jpeg_closed)
+        return;
+    perf_jpeg_number = 0;
+    perf.end_tick = perf_jpeg_close_tick;
+    perf.ms[perf_jpeg_stage] = perf.end_tick - perf.stage_tick;
+    strcpy(perf_jpeg_stage == PERF_ORIGINAL_JPEG ? perf.original : perf.custom, perf_jpeg_path);
+}
+#endif
+
+static void perf_tick(void)
+{
+    if (!perf.active)
+        return;
+#ifdef FILMSIM_JPEG_PAIR
+    perf_collect_jpeg();
+    if (perf.wait_for_pair)
+        return;
+    if (perf_jpeg_number) {
+        if ((unsigned)get_tick_count() - perf.end_tick < PERF_JPEG_TIMEOUT_MS)
+            return;
+        perf_write(perf.status ? perf.status : "jpeg_unconfirmed");
+        return;
+    }
+#endif
+    perf_write(perf.status ? perf.status : "ok");
+}
+
+void filmsim_perf_begin(filmsim_perf_mode mode)
+{
+    // A new RAW can arrive before the previous JPEG close in a burst.
+    perf_tick();
+    if (perf.active)
+        perf_write(perf.status ? perf.status : "jpeg_unconfirmed");
+    if (!conf.film_performance_metrics || !filmsim_photo_mode() || !perf_recipe_available())
+        return;
+
+    memset(&perf, 0, sizeof(perf));
+    perf.active = 1;
+    perf.mode = mode;
+    perf.stage = PERF_NONE;
+    for (int i = 0; i < PERF_STAGE_COUNT; i++)
+        perf.ms[i] = -1;
+    perf.slot = recipe_active();
+    sprintf(perf.look, "%.23s", filmsim_name());
+    perf.number = shot_path(mode == FILMSIM_PERF_PAIR ? perf.original : perf.custom);
+    perf.start_tick = get_tick_count();
+}
+
+void filmsim_perf_mark(filmsim_perf_stage stage)
+{
+    if (!perf.active)
+        return;
+    unsigned now = get_tick_count();
+    if (perf.stage != PERF_NONE) {
+        int *ms = &perf.ms[perf.stage];
+        if (*ms < 0) *ms = 0;
+        *ms += now - perf.stage_tick;
+    }
+    perf.stage = stage;
+    perf.stage_tick = now;
+}
+
+void filmsim_perf_raw_done(int original)
+{
+    if (!perf.active)
+        return;
+    filmsim_perf_mark(PERF_NONE);
+    perf.end_tick = perf.stage_tick;
+#ifdef FILMSIM_JPEG_PAIR
+    if (!remotecap_get_target()) {
+        perf_jpeg_open = 0;
+        perf_jpeg_closed = 0;
+        perf_jpeg_stage = original ? PERF_ORIGINAL_JPEG : PERF_CUSTOM_JPEG;
+        perf_jpeg_number = perf.number;
+    }
+#else
+    (void)original;
+#endif
 }
 
 //-------------------------------------------------------------------
@@ -2460,12 +2601,16 @@ void filmsim_effects_apply(char *raw)
 {
 #ifdef FS_RAW
     if (!raw || !filmsim_photo_mode()) return;
+    filmsim_perf_mark(PERF_GLOW_TONE);
     effects_glow_and_tone(raw);
-    extern void filmsim_prog_step(int k);
-    filmsim_prog_step(7);               // PS_GRAIN
+    filmsim_perf_mark(PERF_GRAIN);
+    filmsim_prog_step(PS_GRAIN);
     effects_grain(raw);
+    filmsim_perf_mark(PERF_FRAME);
     effects_frame(raw);
+    filmsim_perf_mark(PERF_DATE_STAMP);
     effects_datestamp();
+    filmsim_perf_mark(PERF_NONE);
 #else
     (void)raw;
 #endif
@@ -3015,6 +3160,7 @@ void filmsim_reset_settings(void)
     conf.film_wb_r = conf.film_wb_b = 0;
     conf.film_recipe = 0;
     conf.film_save_original_jpeg = 0;
+    conf.film_performance_metrics = 0;
     set_curve(current());               // ohne Dynamik+ und WB-Verschiebung
 }
 
@@ -3679,6 +3825,9 @@ int filmsim_pair_original(char *raw, int iso)
     if (pair_phase != PAIR_IDLE || !pair_use_original())
         return 0;
 
+    filmsim_perf_begin(FILMSIM_PERF_PAIR);
+    filmsim_perf_mark(PERF_RAW_SPOOL);
+
     // Reserve room for the first JPEG and the optional user DNG while the
     // temporary sensor copy is on the card.
     unsigned size = camera_sensor.raw_size;
@@ -3696,7 +3845,9 @@ int filmsim_pair_original(char *raw, int iso)
         if (!saved)
             remove(PAIR_RAW_FILE);
     }
+    filmsim_perf_mark(PERF_NONE);
     if (!saved) {
+        if (perf.active) perf.status = "raw_spool_failed";
         console_add_line(lang_str(LANG_EXCCD_JPEG_PAIR_FAILED));
         return 1; // keep the original even if the second render cannot be queued
     }
@@ -3712,6 +3863,7 @@ int filmsim_pair_original(char *raw, int iso)
         .year = date->tm_year + 1900, .mon = date->tm_mon + 1, .day = date->tm_mday
     };
     pair_cancel = 0;
+    if (perf.active) perf.wait_for_pair = 1;
     pair_expect_file(get_target_file_num(), PAIR_ORIGINAL);
     return 1;
 }
@@ -3721,8 +3873,22 @@ int filmsim_pair_helper(void)
     return pair_phase == PAIR_METER || pair_phase == PAIR_HELPER;
 }
 
+void filmsim_pair_perf_helper_begin(void)
+{
+    if (!perf.active || !perf.wait_for_pair)
+        return;
+    perf_collect_jpeg();
+    if (perf.ms[PERF_ORIGINAL_JPEG] >= 0)
+        perf.ms[PERF_HELPER_WAIT] = (unsigned)get_tick_count() - perf.end_tick;
+    perf.number = shot_path(perf.custom);
+}
+
 void filmsim_pair_helper_raw(int loaded)
 {
+    if (!loaded && perf.active && perf.wait_for_pair) {
+        perf.custom[0] = 0;
+        perf.status = "raw_load_failed";
+    }
     dev_armed = 0;
     remove(PAIR_RAW_FILE);
     pair_expect_file(get_target_file_num(), loaded ? PAIR_RENDER : PAIR_LOAD_FAILED);
@@ -3731,7 +3897,8 @@ void filmsim_pair_helper_raw(int loaded)
 void filmsim_pair_filewrite(const char *name)
 {
     int phase = pair_phase;
-    if (phase != PAIR_ORIGINAL && phase != PAIR_RENDER && phase != PAIR_LOAD_FAILED)
+    int pair_expects_file = phase == PAIR_ORIGINAL || phase == PAIR_RENDER || phase == PAIR_LOAD_FAILED;
+    if (!pair_expects_file && !perf_jpeg_number)
         return;
     if (name[0] != 'A' && name[0] != 'a' && name[0] != '/')
         return;
@@ -3747,15 +3914,26 @@ void filmsim_pair_filewrite(const char *name)
             return;
         number = number * 10 + digit;
     }
-    if (!number || number != pair_number)
+    if (!number)
         return;
-    pair_jpeg[0] = 'A';
-    strcpy(pair_jpeg + 1, path);
-    pair_file_open = 1;
+    if (pair_expects_file && number == pair_number) {
+        pair_jpeg[0] = 'A';
+        strcpy(pair_jpeg + 1, path);
+        pair_file_open = 1;
+    }
+    if (number == perf_jpeg_number) {
+        strcpy(perf_jpeg_path, path + 6);
+        perf_jpeg_open = 1;
+    }
 }
 
 void filmsim_pair_file_closed(void)
 {
+    if (perf_jpeg_open) {
+        perf_jpeg_open = 0;
+        perf_jpeg_close_tick = get_tick_count();
+        perf_jpeg_closed = 1;
+    }
     if (pair_file_open)
         pair_file_closed = 1;
 }
@@ -3774,6 +3952,7 @@ static int jpeg_file_complete(const char *path)
 
 static void pair_finish(int saved)
 {
+    const char *perf_status = saved ? "ok" : pair_cancel ? "cancelled" : "pair_failed";
     if (filmsim_pair_helper()) {
         raw_prepare_develop(NULL, 0);
         dev_armed = 0;
@@ -3789,6 +3968,14 @@ static void pair_finish(int saved)
         console_add_line(lang_str(LANG_EXCCD_JPEG_PAIR_FAILED));
     if (filmsim_photo_mode() && conf.film_sim)
         set_canon_props(pair_use_original() ? &sims[0] : current());
+    if (perf.active && perf.wait_for_pair) {
+        perf_collect_jpeg();
+        if (!saved) {
+            perf.custom[0] = 0;
+            perf.end_tick = get_tick_count();
+        }
+        perf_write(perf.status ? perf.status : perf_status);
+    }
 }
 
 static void pair_tick(void)
@@ -3870,7 +4057,6 @@ int filmsim_pair_kbd(void)
 //   hoechstens alle PROG_MS). Die Schritte sind grob nach den Messungen auf der SX110
 //   gewichtet (1/10 s), die Zeit fuer Canons JPEG ist nicht enthalten.
 //-------------------------------------------------------------------
-enum { PS_LOAD, PS_HOT, PS_DOUBLE, PS_CNR, PS_CURVE, PS_MIX, PS_GLOW, PS_GRAIN, PS_WB, PS_N };
 #define PROG_MS 250
 static int prog_on = 0;
 static int prog_w[PS_N];
@@ -3968,7 +4154,7 @@ static void prog_rows(int done, int total)
     prog_show(done, total);
 }
 
-// Schritt k beginnt (aus filmsim_time_mark und filmsim_effects_apply)
+// Schritt k beginnt
 void filmsim_prog_step(int k)
 {
     int i;
@@ -4020,6 +4206,7 @@ static void prog_finish(void)
 // Aus raw.c vor dem Laden der DNG: Effekte der Entwicklung einsetzen, Balken planen
 void filmsim_develop_prepare(void)
 {
+    shot_skip = 0;
     if (!dev_fx_in) { dev_fx_swap(); dev_fx_in = 1; }
     prog_plan();
     prog_w[PS_LOAD] = dev_ev ? 35 : 20;                  // mit Belichtung ein Durchgang mehr
@@ -4028,10 +4215,11 @@ void filmsim_develop_prepare(void)
     filmsim_prog_step(PS_LOAD);
 }
 
-// Aus raw.c bei einer normalen Aufnahme, vor den Rechenschritten (die Schritte meldet
-// filmsim_time_mark). Doppelbelichtung: Rohbild auf die Karte schreiben bzw. lesen.
+// Aus raw.c bei einer normalen Aufnahme, vor den Rechenschritten.
+// Doppelbelichtung: Rohbild auf die Karte schreiben bzw. lesen.
 void filmsim_shot_prepare(void)
 {
+    shot_skip = 0;
     if (!filmsim_photo_mode()) { prog_on = 0; return; }
     prog_plan();
     if (conf.film_double) prog_w[PS_DOUBLE] = 50;

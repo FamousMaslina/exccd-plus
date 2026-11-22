@@ -15,6 +15,9 @@
 #include "gui_menu.h"
 #include "keyboard.h"
 #include "filmsim.h"
+#ifdef FILMSIM_EXFS
+#include "exfilmsim.h"
+#endif
 #include "filmsim_txt.h"
 #include "lang.h"
 #include "gui_lang.h"
@@ -62,15 +65,9 @@ static const char *menu_enum(int text, int change)
     const CMenuItem *i = menu_item(text);
     return i ? ((const char *(*)(int, int))i->value)(change, i->arg) : "?";
 }
-extern void filmsim_develop_prepare(void);
-extern void filmsim_develop_end(char *raw);
-extern void filmsim_prog_step(int k);
-
 static int now_ms = 10000;
 long get_tick_count() { return now_ms; }
 int usb_remote_active = 0;
-#include "meminfo.h"
-void GetCombinedMemInfo(cam_meminfo *m) { memset(m, 0, sizeof(*m)); m->free_size = 300 << 10; m->free_block_max_size = 200 << 10; m->free_block_count = 5; }
 
 // --- Texte ------------------------------------------------------------------
 char *lang_str(int id)
@@ -358,8 +355,6 @@ extern void filmsim_cnr_hook(char *);
 extern void filmsim_dr_curve_hook(int);
 extern void filmsim_raw_apply(char *);
 extern void filmsim_effects_apply(char *);
-extern void filmsim_time_mark(int);
-extern void filmsim_time_log(void);
 #if CAM_SENSOR_BITS_PER_PIXEL == 12
 extern void filmsim_curve_apply(char *);
 #endif
@@ -368,25 +363,32 @@ extern void filmsim_curve_apply(char *);
 static int dev_shot = 0;                // raw.c: Entwickeln (filmsim_develop_prepare / _end)
 static void shoot(char *raw)
 {
-    filmsim_time_mark(0);
+#ifdef FILMSIM_EXFS
+    if (conf.film_exfs) {
+        exfs_render(raw, dev_shot, 0);
+    } else
+#endif
+    {
+    if (!dev_shot) filmsim_shot_prepare();
+    filmsim_prog_step(PS_HOT);
     filmsim_hotpix_hook(raw);
-    filmsim_time_mark(1);
+    filmsim_prog_step(PS_DOUBLE);
     filmsim_double_hook(raw);
-    filmsim_time_mark(2);
+    filmsim_prog_step(PS_CNR);
     filmsim_cnr_hook(raw);
-    filmsim_time_mark(3);
+    filmsim_prog_step(PS_CURVE);
     filmsim_dr_curve_hook(0);
 #if CAM_SENSOR_BITS_PER_PIXEL == 12
     filmsim_curve_apply(raw);
 #endif
-    filmsim_time_mark(4);
+    filmsim_prog_step(PS_MIX);
     filmsim_raw_apply(raw);
-    filmsim_time_mark(5);
+    filmsim_prog_step(PS_GLOW);
     filmsim_effects_apply(raw);
-    filmsim_time_mark(6);
     if (dev_shot) filmsim_develop_end(raw);
+    else filmsim_shot_end();
+    }
     filmsim_log_shot();
-    filmsim_time_log();
     filmsim_dr_curve_hook(1);
 }
 
@@ -527,6 +529,58 @@ static void scenario_picker(void)
     CHECK(conf.film_sim == 0, "SET: Film %d", conf.film_sim);
     CHECK(alt_exits == 1, "SET schliesst nicht");
 }
+
+#ifdef FILMSIM_QUICK_BUTTONS
+static void scenario_quick_buttons(void)
+{
+    static const int enabled[] = { MODE_P, MODE_NIGHT_SCENE, MODE_LANDSCAPE, MODE_PORTRAIT, MODE_AUTO };
+    static const int disabled[] = { MODE_TV, MODE_AV, MODE_M, MODE_NIGHT_SNAPSHOT, MODE_INDOOR, MODE_VIDEO_STD };
+    camera_on();
+    conf.film_quick_button = 1; // Left
+    conf.iso_quick_button = 2; // Right
+
+    for (unsigned i = 0; i < sizeof(enabled) / sizeof(enabled[0]); i++) {
+        camera_info.state.mode_shooting = enabled[i];
+        CHECK(filmsim_quick_mode(KEY_LEFT) == ALT_MODE_ENTER_FILM, "Film shortcut unavailable in mode %d", enabled[i]);
+        CHECK(filmsim_quick_mode(KEY_RIGHT) == ALT_MODE_ENTER_ISO, "ISO shortcut unavailable in mode %d", enabled[i]);
+        CHECK(filmsim_quick_open(ALT_MODE_ENTER_ISO), "ISO picker failed to open in mode %d", enabled[i]);
+    }
+    for (unsigned i = 0; i < sizeof(disabled) / sizeof(disabled[0]); i++) {
+        camera_info.state.mode_shooting = disabled[i];
+        CHECK(filmsim_quick_mode(KEY_LEFT) == ALT_MODE_NORMAL && filmsim_quick_mode(KEY_RIGHT) == ALT_MODE_NORMAL,
+              "Shortcut intercepted a button in mode %d", disabled[i]);
+        CHECK(!filmsim_quick_open(ALT_MODE_ENTER_FILM) && !filmsim_quick_open(ALT_MODE_ENTER_ISO),
+              "A queued shortcut opened after switching to mode %d", disabled[i]);
+    }
+
+    camera_info.state.mode_shooting = MODE_M;
+    CHECK(filmsim_quick_iso_open(), "Manual Quick ISO entry unavailable in M");
+    camera_info.state.mode_shooting = MODE_P;
+    CHECK(filmsim_quick_open(ALT_MODE_ENTER_ISO), "ISO shortcut did not reactivate in P");
+    camera_info.state.mode_shooting = MODE_AV;
+    int exits = alt_exits;
+    cur_mode->redraw(1);
+    CHECK(alt_exits == exits + 1, "ISO picker stayed open after turning the dial");
+
+    camera_info.state.mode_shooting = MODE_P;
+    CHECK(filmsim_quick_open(ALT_MODE_ENTER_FILM), "Film shortcut did not reactivate in P");
+    camera_info.state.mode_shooting = MODE_AV;
+    exits = alt_exits;
+    filmsim_tick();
+    CHECK(alt_exits == exits + 1, "Film picker stayed open after turning the dial");
+
+    filmsim_open_menu();
+    camera_info.state.mode_shooting = MODE_M;
+    exits = alt_exits;
+    filmsim_tick();
+    CHECK(alt_exits == exits, "Mode restriction affected the manual film picker");
+
+    camera_info.state.mode_shooting = MODE_P;
+    canon_shoot_menu_active = 1;
+    CHECK(filmsim_quick_mode(KEY_LEFT) == ALT_MODE_NORMAL && filmsim_quick_mode(KEY_RIGHT) == ALT_MODE_NORMAL,
+          "Shortcuts intercepted Canon's FUNC menu");
+}
+#endif
 
 // Rohbild: Verlauf, Spalte fuer Spalte verschieden, je Bayer-Farbe plausibel
 static void raw_fill_test(void)
@@ -1249,6 +1303,44 @@ static const char *card_text(const char *n)
     return card[i].data;
 }
 
+#ifdef FILMSIM_EXFS
+static void scenario_exfs(void)
+{
+    unsigned size = camera_sensor.raw_size;
+    rawbuf = malloc(size);
+    unsigned char *input = malloc(size), *reference = malloc(size);
+    CHECK(rawbuf && input && reference, "RAW buffer allocation failed");
+    if (!rawbuf || !input || !reference) return;
+    camera_on();
+    raw_fill_test();
+    memcpy(input, rawbuf, size);
+
+    static const char *looks[] = {"Daylight 100", "Chrome 64", "Violet 400", "Noir 3200"};
+    for (unsigned i = 0; i < sizeof(looks) / sizeof(looks[0]); i++) {
+        film_by_name(looks[i]);
+        conf.film_frame = i != 0;
+        conf.film_grain = i ? 2 : 0;
+        conf.film_mist = i == 3;
+        conf.film_vignette = i == 3;
+        conf.film_bwfilter = i == 3 ? 2 : 0;
+
+        conf.film_exfs = 0;
+        memcpy(rawbuf, input, size);
+        shoot((char *)rawbuf);
+        memcpy(reference, rawbuf, size);
+
+        conf.film_exfs = 1;
+        memcpy(rawbuf, input, size);
+        shoot((char *)rawbuf);
+        CHECK(memcmp(reference, rawbuf, size) == 0, "EXFS render differs for %s", looks[i]);
+    }
+
+    free(reference);
+    free(input);
+    free(rawbuf);
+}
+#endif
+
 #if CAM_SENSOR_BITS_PER_PIXEL == 12
 static long long raw_sum(void)
 {
@@ -1384,6 +1476,15 @@ static void scenario_recipe(const char *root)
     raw_fill_test(); long long o0 = raw_sum(); filmsim_curve_apply((char *)rawbuf);
     CHECK(raw_sum() == o0, "Aus mit Shift veraendert das Bild");
 #endif
+
+    filmsim_set(0);
+    conf.film_vignette = 1;
+    filmsim_recipe_save(2);
+    CHECK(conf.film_recipe == 3 && strcmp(filmsim_perf_enum(1, 0), "On") == 0,
+          "An effects-only recipe should allow metrics");
+    filmsim_recipe_enum(1, 0);
+    CHECK(strcmp(filmsim_perf_enum(0, 0), "needs a recipe") == 0,
+          "Leaving an effects-only recipe should suspend metrics");
 }
 
 // Auto-ISO mit kuerzester Zeit: Canon misst, EXCCD verschiebt ISO und Zeit
@@ -1478,6 +1579,8 @@ static void scenario_aiso(void)
 #ifdef FILMSIM_JPEG_PAIR
 static void scenario_jpeg_pair(void)
 {
+    static const char perf_csv[] = "A/CHDK/LOGS/PERF.CSV";
+    static const char single[] = "A/DCIM/100CANON/IMG_8344.JPG";
     static const char original[] = "A/DCIM/100CANON/IMG_8345.JPG";
     static const char helper[] = "A/DCIM/100CANON/IMG_8346.JPG";
     static const char raw_file[] = "A/CHDK/DATA/EXCCDJP.TMP";
@@ -1488,10 +1591,37 @@ static void scenario_jpeg_pair(void)
     camera_sensor.raw_size = sizeof(sensor);
     CHECK(!conf.film_save_original_jpeg && strcmp(filmsim_pair_enum(1, 0), "needs a look") == 0,
           "Original JPEG must be gated when the look is Off");
+    CHECK(strcmp(filmsim_perf_enum(1, 0), "needs a recipe") == 0 && !conf.film_performance_metrics,
+          "Performance Metrics must be gated when the look is Off");
 
     film_by_name("Chrome 64");
     CHECK(!filmsim_pair_original(sensor, 125) && shooting_get_prop(PROPCASE_MY_COLORS) == MC_CUSTOM,
           "Disabled setting must leave the recipe-only capture path active");
+    file_number = 8344;
+    filmsim_perf_begin(FILMSIM_PERF_SINGLE);
+    filmsim_perf_raw_done(0);
+    filmsim_pair_filewrite(single);
+    filmsim_pair_file_closed();
+    filmsim_tick();
+    CHECK(fs_find(perf_csv) < 0, "Metrics logged with selector off");
+
+    CHECK(strcmp(filmsim_perf_enum(1, 0), "On") == 0, "Look should allow metrics");
+    filmsim_perf_begin(FILMSIM_PERF_SINGLE);
+    filmsim_perf_mark(PERF_CURVE);
+    now_ms += 100;
+    filmsim_perf_raw_done(0);
+    filmsim_pair_filewrite(original);
+    filmsim_pair_file_closed();
+    filmsim_tick();
+    CHECK(fs_find(perf_csv) < 0, "Unrelated JPEG close completed the measurement");
+    now_ms += 50;
+    filmsim_pair_filewrite(single);
+    filmsim_pair_file_closed();
+    filmsim_tick();
+    CHECK(strstr(card_text(perf_csv),
+                 "single_photo;ok;100CANON/IMG_8344.JPG;;\"Chrome 64\";;150;;;;;;;;;;;100;;;;;;;;50\r\n"),
+          "Single capture metrics do not match:\n%s", card_text(perf_csv));
+
     filmsim_pair_enum(1, 0);
     CHECK(shooting_get_prop(PROPCASE_MY_COLORS) == MC_OFF, "Original must use Canon colours");
     shooting_set_prop(PROPCASE_FLASH_MODE, 1);
@@ -1500,12 +1630,14 @@ static void scenario_jpeg_pair(void)
     int source = fs_find(raw_file);
     CHECK(source >= 0 && card[source].size == sizeof(sensor) &&
           memcmp(card[source].data, sensor, sizeof(sensor)) == 0, "Wrong retained sensor data");
+    filmsim_perf_raw_done(1);
     filmsim_pair_filewrite(original);
     fs_put(original, jpeg, sizeof(jpeg));
     filmsim_tick();
     filmsim_pair_kbd();
     CHECK(!injected_key && !filmsim_develop_armed(), "Helper started before Canon closed the original");
 
+    now_ms += 90;
     filmsim_pair_file_closed();
     filmsim_tick();
     filmsim_pair_kbd();
@@ -1516,10 +1648,19 @@ static void scenario_jpeg_pair(void)
     filmsim_pair_kbd();
     CHECK(injected_key == KEY_SHOOT_FULL_ONLY, "Helper did not complete the shutter press");
     file_number = 8346;
+    now_ms += 210;
+    filmsim_pair_perf_helper_begin();
+    filmsim_perf_mark(PERF_RAW_LOAD);
+    now_ms += 60;
+    filmsim_perf_mark(PERF_NONE);
     filmsim_pair_helper_raw(1);
+    filmsim_perf_mark(PERF_COLOR_NR);
+    now_ms += 80;
+    filmsim_perf_raw_done(0);
     camera_info.state.state_shooting_progress = SHOOTING_PROGRESS_NONE;
     filmsim_pair_filewrite(helper);
     fs_put(helper, jpeg, sizeof(jpeg));
+    now_ms += 140;
     filmsim_pair_file_closed();
     filmsim_tick();
     filmsim_pair_kbd();
@@ -1532,9 +1673,16 @@ static void scenario_jpeg_pair(void)
           memcmp(card[second].data, jpeg, sizeof(jpeg)) == 0,
           "Completing a pair must preserve both JPEG files");
     CHECK(shooting_get_prop(PROPCASE_FLASH_MODE) == 1, "Original flash setting was not restored");
+    CHECK(strstr(card_text(perf_csv),
+                 "keep_original_jpeg;ok;100CANON/IMG_8346.JPG;100CANON/IMG_8345.JPG;\"Chrome 64\";;580;0;;90;210;60;;;;;80;;;;;;;;;140\r\n"),
+          "Pair metrics do not match:\n%s", card_text(perf_csv));
+    const char *header_end = strstr(card_text(perf_csv), "\r\n");
+    CHECK(header_end && !strstr(header_end + 2, "mode;status;"),
+          "Performance CSV has a duplicate header");
 
     filmsim_set(0);
     CHECK(!conf.film_save_original_jpeg, "Off must clear Save Original JPEG");
+    CHECK(strcmp(filmsim_perf_enum(0, 0), "needs a recipe") == 0, "Off must suspend metrics");
 }
 #endif
 
@@ -1544,12 +1692,22 @@ int main(int argc, char **argv)
     const char *root = argc > 2 ? argv[2] : ".";
     if (strcmp(what, "names") == 0) scenario_names(argc > 3 ? argv[3] : "0");
     else if (strcmp(what, "picker") == 0) scenario_picker();
+#ifdef FILMSIM_QUICK_BUTTONS
+    else if (strcmp(what, "quick_buttons") == 0) scenario_quick_buttons();
+#endif
     else if (strcmp(what, "raw") == 0) scenario_raw(root);
     else if (strcmp(what, "develop") == 0) scenario_develop();
     else if (strcmp(what, "recipe") == 0) scenario_recipe(root);
     else if (strcmp(what, "aiso") == 0) scenario_aiso();
     else if (strcmp(what, "mixwb") == 0) scenario_mixwb();
     else if (strcmp(what, "thumb") == 0) scenario_thumb(argc > 3 ? argv[3] : 0, argc > 4 ? argv[4] : 0);
+#ifdef FILMSIM_EXFS
+    else if (strcmp(what, "exfs") == 0) scenario_exfs();
+    else if (strcmp(what, "exfs_develop") == 0) {
+        conf.film_exfs = 1;
+        scenario_develop();
+    }
+#endif
 #ifdef FILMSIM_JPEG_PAIR
     else if (strcmp(what, "jpeg_pair") == 0) scenario_jpeg_pair();
 #endif
