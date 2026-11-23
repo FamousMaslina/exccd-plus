@@ -61,7 +61,7 @@ firmware version, and any test results.
 </table>
 
 
-
+## ExFilmSim (EXFS)
 On the PowerShot A620, **EXCCD+ → EXFS** enables the optional
 ExFilmSim Engine. The checkbox defaults to off, which selects the original
 EXCCD engine. EXFS uses the same recipes and Canon JPEG processing. It speeds
