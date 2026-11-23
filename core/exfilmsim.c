@@ -105,9 +105,13 @@ static void exfs_hq_render(char *raw, int developing, int pair_helper, const exf
 
 int exfs_render_selected(char *raw, int developing, int pair_helper)
 {
+    const exfs_hq_profile *profile = exfs_hq_active_profile();
+    if (conf.film_exfs_11 || conf.film_exfs_hq_11) {
+        exfs11_render(raw, developing, pair_helper, profile);
+        return 1;
+    }
     if (!conf.film_exfs && !conf.film_exfs_hq)
         return 0;
-    const exfs_hq_profile *profile = exfs_hq_active_profile();
     if (profile)
         exfs_hq_render(raw, developing, pair_helper, profile);
     else

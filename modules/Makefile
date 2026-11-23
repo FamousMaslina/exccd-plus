@@ -61,7 +61,7 @@ $Oshothist.flt: $Oshot_histogram.o
 ifeq ($(PLATFORM),a620)
 $Ocurves.flt: $Ocurves_exfs.o $Ocurves_exfs_rgb.o
 $Ocurves_exfs.o: curves_exfs.c curves.c curves.h $(include)/conf.h
-$Ocurves_exfs_rgb.o: curves_exfs_rgb.c $(core)/exfilmsim_raw.h $(core)/filmsim_raw.h $(core)/exfilmsim.h
+$Ocurves_exfs_rgb.o: curves_exfs_rgb.c $(core)/exfilmsim_11_raw.h $(core)/exfilmsim_raw.h $(core)/filmsim_raw.h $(core)/exfilmsim.h
 	@echo $< '->' $@
 	$(CC) $(CFLAGS) -marm -nostdinc -c -o $@ $<
 else

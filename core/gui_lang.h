@@ -942,8 +942,10 @@
 #define LANG_EXCCD_HQ_GRAIN_SIZE                809
 #define LANG_EXCCD_HQ_GRAIN_COLOR               810
 #define LANG_EXCCD_HQ_GRAIN_HELP                811
+#define LANG_EXCCD_EXFS_11                      812
+#define LANG_EXCCD_EXFS_HQ_11                   813
 
-#define GUI_LANG_ITEMS                          811
+#define GUI_LANG_ITEMS                          813
 
 //-------------------------------------------------------------------
 extern void gui_lang_init();

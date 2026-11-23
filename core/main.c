@@ -8,6 +8,7 @@
 #include "console.h"
 #include "shooting.h"
 #include "jpeg_iso.h"
+#include "filmsim.h"
 
 #include "edgeoverlay.h"
 #include "module_load.h"
@@ -305,6 +306,9 @@ void core_spytask()
             extern void hook_raw_save_complete();
             hook_raw_save_complete();
             raw_data_available = 0;
+#ifdef FILMSIM_EXFS
+            filmsim_log_shot_flush();
+#endif
 #ifdef CAM_HAS_GPS
             if (((int)conf.gps_on_off == 1) && ((int)conf.gps_waypoint_save == 1)) gps_waypoint();
 #endif

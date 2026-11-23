@@ -76,7 +76,7 @@ typedef struct {
 // Don't make any of the entries conditionally compiled in - this will change the offsets between cameras causing problems with
 // making the modules camera/platform independent
 
-#define CONF_VERSION            {3,6}       // Version for Conf structure
+#define CONF_VERSION            {3,7}       // Version for Conf structure
 
 typedef struct
 {
@@ -497,6 +497,8 @@ typedef struct
     int gold200_grain_amount;
     int gold200_grain_size;
     int gold200_grain_color;
+    int film_exfs_11;
+    int film_exfs_hq_11;
 
 } Conf;
 
@@ -565,6 +567,9 @@ extern void cb_autoiso_menu_change(unsigned int item);  // gui.c
 extern int conf_getValue(unsigned short id, tConfigVal* configVal);
 extern int conf_setValue(unsigned short id, tConfigVal configVal);
 extern void conf_setAutosave(int n);
+#ifdef FILMSIM_EXFS
+extern void conf_select_film_engine(int *selected);
+#endif
 
 // reyalp: putting these in conf, since the conf values are lookups for them
 // prefixes and extentions available for raw images (index with conf.raw_prefix etc)

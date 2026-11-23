@@ -2,6 +2,7 @@
 #define EXFILMSIM_HQ_H
 
 #define EXFS_HQ_VERSION "1.0"
+#define EXFS_HQ_11_VERSION "1.1"
 
 enum {
     EXFS_HQ_AMOUNT, EXFS_HQ_SIZE, EXFS_HQ_COLOR, EXFS_HQ_CONTROLS
@@ -26,6 +27,9 @@ const exfs_hq_profile *exfs_hq_profile_for_curve(const char *curve);
 const exfs_hq_profile *exfs_hq_active_profile(void);
 int exfs_hq_clamp_level(int level);
 int exfs_hq_grain(char *raw, const exfs_hq_profile *profile, int red_wb, int blue_wb);
+int exfs_hq11_grain(char *raw, const exfs_hq_profile *profile, int red_wb, int blue_wb);
+int exfs_hq11_chroma(char *raw, int strength, int red_wb, int blue_wb);
 void filmsim_effects_apply_hq(char *raw, const exfs_hq_profile *profile);
+void exfs11_render(char *raw, int developing, int pair_helper, const exfs_hq_profile *profile);
 
 #endif

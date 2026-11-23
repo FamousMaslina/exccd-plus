@@ -7,10 +7,13 @@ void curve_apply(void);
 
 void exfs_module_rgb_curve(unsigned char *raw, int rows, int rowpix, int rowlen,
                            const unsigned short *curve);
+void exfs11_module_rgb_curve(unsigned char *raw, int rows, int rowpix, int rowlen,
+                            const unsigned short *curve);
 
 static int exfs_can_apply_rgb(void)
 {
-    if ((!conf.film_exfs && !conf.film_exfs_hq) || conf.curve_enable != 1 || current_curve_type != CURVE_CUSTOM)
+    if ((!conf.film_exfs && !conf.film_exfs_hq && !conf.film_exfs_11 && !conf.film_exfs_hq_11) ||
+        conf.curve_enable != 1 || current_curve_type != CURVE_CUSTOM)
         return 0;
     for (int i = 0; i < 4 * CURVE_SIZE; i++)
         if (curve_data[i] > 1023)
@@ -21,8 +24,14 @@ static int exfs_can_apply_rgb(void)
 void curve_apply(void)
 {
     if (exfs_can_apply_rgb()) {
-        exfs_module_rgb_curve((unsigned char *)get_raw_image_addr(), camera_sensor.raw_rows,
-                              camera_sensor.raw_rowpix, camera_sensor.raw_rowlen, curve_data);
+        unsigned char *raw = (unsigned char *)get_raw_image_addr();
+        if (conf.film_exfs_11 || conf.film_exfs_hq_11) {
+            exfs11_module_rgb_curve(raw, camera_sensor.raw_rows, camera_sensor.raw_rowpix,
+                                    camera_sensor.raw_rowlen, curve_data);
+        } else {
+            exfs_module_rgb_curve(raw, camera_sensor.raw_rows, camera_sensor.raw_rowpix,
+                                  camera_sensor.raw_rowlen, curve_data);
+        }
     } else {
         curve_apply_exccd();
     }

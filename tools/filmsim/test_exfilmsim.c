@@ -8,6 +8,7 @@
 #include "exfilmsim.h"
 #define CAM_SENSOR_BITS_PER_PIXEL 10
 #include "exfilmsim_raw.h"
+#include "exfilmsim_11_raw.h"
 #include "filmsim_dev.h"
 
 enum { WIDTH = 3152, HEIGHT = 2340, STRIDE = WIDTH * 10 / 8, RAW_SIZE = STRIDE * HEIGHT };
@@ -97,15 +98,17 @@ static void reference_rgb(unsigned char *raw, const unsigned short *curve)
 }
 
 typedef struct {
-    clock_t hot, curve, wb;
+    clock_t hot, curve, grain, wb;
 } timings;
 
-static int compare_render(unsigned char *reference, unsigned char *fast, short *scratch,
+static int compare_render(unsigned char *reference, unsigned char *fast, unsigned char *fast11, short *scratch,
                           const unsigned short *curve, const exfs_gain_params *gains,
-                          timings *exccd, timings *exfs)
+                          timings *exccd, timings *exfs, timings *exfs11)
 {
     static unsigned short gain_lut[3][1024];
+    static unsigned packed_curve[4 * EXFS_PIXELS];
     memcpy(fast, reference, RAW_SIZE);
+    memcpy(fast11, reference, RAW_SIZE);
     clock_t start = clock();
     hotpix_fix(reference, HEIGHT, WIDTH, STRIDE, scratch);
     exccd->hot += clock() - start;
@@ -113,6 +116,12 @@ static int compare_render(unsigned char *reference, unsigned char *fast, short *
     exfs_hot_pixels(fast, HEIGHT, WIDTH, STRIDE, scratch);
     exfs->hot += clock() - start;
     if (!check_pixels("Hot pixels", reference, fast))
+        return 0;
+    start = clock();
+    unsigned hot_rows[3 * EXFS11_HOT_WORDS(WIDTH)] = {0};
+    exfs11_hot_pixels(fast11, HEIGHT, WIDTH, STRIDE, hot_rows);
+    exfs11->hot += clock() - start;
+    if (!check_pixels("EXFS 1.1 hot pixels", fast, fast11))
         return 0;
 
     start = clock();
@@ -123,6 +132,24 @@ static int compare_render(unsigned char *reference, unsigned char *fast, short *
     exfs->curve += clock() - start;
     if (!check_pixels("RGB curve", reference, fast))
         return 0;
+
+    start = clock();
+    exfs11_build_rgb_table(curve, packed_curve);
+    exfs11_rgb_curve(fast11, HEIGHT, WIDTH, STRIDE, packed_curve);
+    exfs11->curve += clock() - start;
+    if (!check_pixels("EXFS 1.1 RGB curve", fast, fast11))
+        return 0;
+    short amplitude[GRAIN_AMP_N];
+    grain_amp_build(amplitude, 14);
+    start = clock();
+    grain_apply(fast, HEIGHT, WIDTH, STRIDE, 0, 134, 176, amplitude, scratch, 1);
+    exfs->grain += clock() - start;
+    start = clock();
+    exfs11_grain_pixels(fast11, HEIGHT, WIDTH, STRIDE, 134, 176, amplitude, scratch, 1);
+    exfs11->grain += clock() - start;
+    if (!check_pixels("EXFS 1.1 grain", fast, fast11))
+        return 0;
+    memcpy(fast, reference, RAW_SIZE);
 
     start = clock();
     raw_gain(reference, HEIGHT, WIDTH, STRIDE, 0, 31, gains->red, gains->green, gains->blue,
@@ -181,17 +208,20 @@ static int read_camera_dng(const char *name, unsigned char *raw, dng_meta_t *met
     return 1;
 }
 
-static void print_timings(timings exccd, timings exfs)
+static void print_timings(timings exccd, timings exfs, timings exfs11)
 {
     const double ms = 1000.0 / CLOCKS_PER_SEC;
     printf("Host milliseconds, EXCCD / EXFS: hot pixels %.1f / %.1f, RGB curve %.1f / %.1f, white balance %.1f / %.1f.\n",
            exccd.hot * ms, exfs.hot * ms, exccd.curve * ms, exfs.curve * ms, exccd.wb * ms, exfs.wb * ms);
+    printf("Host milliseconds, EXFS 1.0 / 1.1: hot pixels %.1f / %.1f, Grain %.1f / %.1f.\n",
+           exfs.hot * ms, exfs11.hot * ms, exfs.grain * ms, exfs11.grain * ms);
 }
 
 int main(int argc, char **argv)
 {
     unsigned char *reference = malloc(RAW_SIZE);
     unsigned char *fast = malloc(RAW_SIZE);
+    unsigned char *fast11 = malloc(RAW_SIZE);
     short *scratch = malloc(sizeof(*scratch) * HP_BUF_SHORTS(WIDTH));
     static unsigned short curve[4096];
     static const exfs_gain_params gains[] = {
@@ -199,21 +229,21 @@ int main(int argc, char **argv)
         {7813, 4096, 2905, 1219, 8010},
         {1024, 16384, 19121, 6633, 2178},
     };
-    timings exccd = {0}, exfs = {0};
+    timings exccd = {0}, exfs = {0}, exfs11 = {0};
 
-    if (!reference || !fast || !scratch || !check_hot_lanes())
+    if (!reference || !fast || !fast11 || !scratch || !check_hot_lanes())
         return 1;
 
     for (int sample = 0; sample < 3; sample++) {
         fill_frame(reference, sample);
         for (int i = 0; i < 4096; i++)
             curve[i] = next_random() & 1023;
-        if (!compare_render(reference, fast, scratch, curve, &gains[sample], &exccd, &exfs))
+        if (!compare_render(reference, fast, fast11, scratch, curve, &gains[sample], &exccd, &exfs, &exfs11))
             return 1;
     }
 
-    puts("Bit-identical hot pixels, RGB curve and white balance on three synthetic A620 RAW buffers.");
-    print_timings(exccd, exfs);
+    puts("Bit-identical hot pixels, RGB curve, grain and white balance on three synthetic A620 RAW buffers.");
+    print_timings(exccd, exfs, exfs11);
     if (argc > 1) {
         if (argc < 3 || !read_curve(argv[1], curve)) {
             fprintf(stderr, "Expected a 10-bit RGB curve followed by A620 DNGs.\n");
@@ -221,6 +251,7 @@ int main(int argc, char **argv)
         }
         exccd = (timings){0};
         exfs = (timings){0};
+        exfs11 = (timings){0};
         for (int i = 2; i < argc; i++) {
             dng_meta_t meta;
             if (!read_camera_dng(argv[i], reference, &meta)) {
@@ -235,16 +266,17 @@ int main(int argc, char **argv)
                 WB_ONE * helper_g / helper_r,
                 WB_ONE * helper_g / helper_b,
             };
-            if (!compare_render(reference, fast, scratch, curve, &wb, &exccd, &exfs)) {
+            if (!compare_render(reference, fast, fast11, scratch, curve, &wb, &exccd, &exfs, &exfs11)) {
                 fprintf(stderr, "Mismatch while rendering %s\n", argv[i]);
                 return 1;
             }
         }
         printf("Bit-identical output for %d captured A620 DNGs with %s.\n", argc - 2, argv[1]);
-        print_timings(exccd, exfs);
+        print_timings(exccd, exfs, exfs11);
     }
 
     free(scratch);
+    free(fast11);
     free(fast);
     free(reference);
     return 0;

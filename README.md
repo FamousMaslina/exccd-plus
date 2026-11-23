@@ -2,7 +2,7 @@
 # EXCCD+
 <img width="900" height="300" alt="exccdplus" src="https://github.com/user-attachments/assets/167387f4-b2bd-4155-afc7-9e13be0f9175" />
 
-EXCCD+ v1.2 combines the original [CHDK](https://chdk.fandom.com/) menu and script loader
+EXCCD+ v1.3 combines the original [CHDK](https://chdk.fandom.com/) menu and script loader
 with the film looks from [EXCCD v1.10.2](https://github.com/35mmSebas/exccd). Each look
 combines Canon's *My Colors* settings with a tone curve applied before the camera creates the JPEG.
 
@@ -62,32 +62,67 @@ firmware version, and any test results.
 
 
 ## ExFilmSim (EXFS)
-On the PowerShot A620, **EXCCD+ → EXFS** enables the optional
-ExFilmSim Engine. The checkbox defaults to off, which selects the original
-EXCCD engine. EXFS uses the same recipes and Canon JPEG processing. It speeds
-up the RAW hot-pixel scan, RGB tone curves, and white-balance correction after
-RAW development. It uses the regular EXCCD Grain effect when enabled.
 
-These timings were measured on the A620 1.00f with **Kodak Gold 200**, from RAW
-handling to the final JPEG close. The first two rows compare one capture per engine.
+On the PowerShot A620, the **EXCCD+** menu offers **EXFS 1.0**, **EXFS 1.1**,
+**EXFS HQ 1.0**, and **EXFS HQ 1.1**. Selecting one clears the other three.
+Clearing all four selects the original EXCCD engine, which is the default.
 
-| Capture mode | Original EXCCD | EXFS | Time saved | RGB tone curve, EXCCD → EXFS |
-|---|---:|---:|---:|---:|
-| Single photo | 6.66 s | 5.85 s | **0.81 s (12.2%)** | 2.25 s → 1.17 s |
-| Save Original JPEG | 14.01 s | 11.95 s | **2.06 s (14.7%)** | 2.26 s → 1.16 s |
-| Single photo (EXFS HQ 1.0) | — | 40.19 s (HQ) | — | 1.16 s (HQ) |
+**EXFS 1.0** speeds up the RAW hot-pixel scan, RGB tone curves, and white-balance
+correction after RAW development. Both standard versions use the same recipes,
+regular Grain controls, and Canon JPEG processing.
 
-### ExFilmSim High Quality (EXFS HQ 1.0)
+#### EXFS 1.1 highlights
 
-EXFS HQ 1.0 shares the EXFS renderer and adds a separate grain model for
-**Kodak Gold 200**. Both engines use the Gold 200 colour recipe and Canon's
-JPEG processing. HQ uses its own grain controls in place of the regular
-Grain setting. Other looks use EXFS while HQ stays selected for the next
-compatible look.
+- **Hot-pixel scan.** A bit mask marks candidate pixels so the renderer can
+  skip clear groups and run the full correction checks on candidates.
+- **RGB tone curves.** A lookup table stores the curve values already shifted
+  into their positions in the packed 10-bit RAW data.
+- **Grain.** The renderer applies the same offsets directly to packed RAW
+  pixel pairs, reducing repeated unpacking and repacking. [RAW routines](core/exfilmsim_11_raw.h)
 
-On the A620, enable **EXFS HQ 1.0** in the **EXCCD+** menu. Enabling
-either EXFS checkbox clears the other. With both cleared, the camera uses
-the original EXCCD engine.
+#### EXFS benchmarks
+
+These are same-scene **Kodak Gold 200** captures on the A620 1.00f. Each value
+is one successful capture measured from RAW handling to final JPEG close
+(`raw_to_output_ms`).
+
+| Capture mode | Grain | EXFS 1.0 | EXFS 1.1 | Time saved |
+|---|---|---:|---:|---:|
+| Single photo | Medium | 11.23 s | 9.08 s | **2.15 s (19.1%)** |
+| Single photo | Off | 5.81 s | 4.37 s | **1.44 s (24.8%)** |
+| Save Original JPEG | Off | 14.84 s | 11.79 s | **3.05 s (20.6%)** |
+
+In the Medium grain test, the grain stage dropped from 4.64 s to 3.55 s.
+An earlier Gold 200 benchmark measured 6.66 s with original EXCCD and 5.85 s
+with EXFS 1.0 for one JPEG, and 14.01 s and 11.95 s with Save Original JPEG.
+A separate flash-off test of EXFS 1.0 and EXFS 1.1 measured 4.99 s and
+4.06–4.18 s with Grain off, and 10.21 s and 7.19 s with Medium grain, from
+full shutter press through JPEG close.
+
+EXFS 1.0 and EXFS 1.1 produced byte-identical processed RAW when the camera
+reprocessed the same saved exposure with Grain off for Chrome 64, Sony-CFL,
+Reggie Porta, and Kodak Gold 200. Gold 200 also matched with Medium grain and
+a fixed seed. Canon JPEG bytes varied across repeat captures.
+
+### ExFilmSim High Quality (EXFS HQ)
+
+EXFS HQ adds a separate grain model for **Kodak Gold 200** and custom looks
+that use `GOLD200.CV`. Both HQ versions use the same Gold 200 colour recipe,
+HQ grain controls, and Canon JPEG processing. Other looks use the corresponding
+standard EXFS version while HQ stays selected for the next compatible look.
+
+#### EXFS HQ 1.1 highlights
+
+- **Chroma filtering.** Rolling Bayer-cell rows reuse the neighbourhood data
+  for the 3×3 red–green and blue–green filter. Packed sums and lookup tables
+  reduce the arithmetic and divisions needed per cell while keeping the same
+  edge weights and integer rounding.
+- **Grain.** Rolling Bayer-cell rows reuse the grain samples shared by
+  neighbouring cells. The renderer mixes their luminance and colour offsets,
+  then applies those patterns to packed RAW pixel pairs. The default grain
+  amount stays at 0, with the same texture for a fixed seed. [HQ 1.1 implementation](core/exfilmsim_hq_11.c)
+
+#### HQ grain controls
 
 The picker marks **Kodak Gold 200** as HQ compatible. Highlight it with
 EXFS HQ enabled and press **Down** to adjust **Grain amount**, **Grain size**,
@@ -112,7 +147,7 @@ pending changes.
    sizes. Fine variation within each cell and small colour offsets give
    the mostly luminance grain its texture. **Size** shifts the balance between
    fine grain and clumps, and **Color** controls the added colour variation.
-   [Grain implementation](core/exfilmsim_hq.c)
+   [HQ 1.0 grain implementation](core/exfilmsim_hq.c)
 3. **Shape the grain by tone and detail.** A Gold 200 profile tuned from
    reference scans gives the midtones the most texture, the shadows moderate
    texture, and the highlights very little. **Amount** scales the grain
@@ -121,12 +156,26 @@ pending changes.
    balance when adding the offsets to the sensor values, then Canon demosaics
    the image and makes the JPEG. [RAW processing order](core/exfilmsim.c)
 
-In the EXFS HQ 1.0 timing above, colour noise reduction took 18.33 s and
-grain took 16.45 s.
+#### EXFS HQ benchmarks
 
+These captures are from the same A620 scene and Kodak Gold 200 benchmark as
+the standard EXFS table. Both HQ versions used the default grain amount.
+
+| Capture mode | EXFS HQ 1.0 | EXFS HQ 1.1 | Time saved |
+|---|---:|---:|---:|
+| Single photo | 40.59 s | 30.47 s | **10.12 s (24.9%)** |
+
+Colour noise reduction dropped from 18.32 s to 11.51 s, and grain from
+16.63 s to 13.87 s. In a separate flash-off run, EXFS HQ 1.1 took 30.46 s
+from shutter press to JPEG close and 29.68 s from RAW handling to JPEG close.
+Fixed-seed host tests with a saved A620 exposure produced byte-identical
+processed RAW with HQ 1.0 and HQ 1.1 for all four tested presets.
 
 ## What's new
 
+- **v1.3** Add **EXFS 1.1** and **EXFS HQ 1.1** on the A620. Speed up
+  hot-pixel detection, RGB tone curves, and grain in EXFS, and reduce the cost
+  of chroma filtering and grain in EXFS HQ. Keep both 1.0 engines available.
 - **v1.2** Add **EXFS HQ 1.0** for **Kodak Gold 200** on the A620. Press
   **Down** in the film picker to adjust grain amount, size, and colour.
   Other looks use EXFS while EXFS HQ stays selected.
@@ -236,7 +285,7 @@ Use Dynamic+2 for highlight protection in automatic exposure modes.
 
 Build for your camera model and firmware version. For the A620 1.00f, run
 `sh tools/filmsim/build.sh a620` from the repository with the [build tools](#camera-build-requirements)
-on your PATH. Extract the resulting build from `dist/v1.2/` to the root of the SD card.
+on your PATH. Extract the resulting build from `dist/v1.3/` to the root of the SD card.
 On the A620, start manually in playback with **MENU → Firm Update**. For
 autostart, use **EXCCD+ → System → Make Card Bootable...**, then lock the SD card and restart.
 
@@ -349,11 +398,12 @@ format). `wb = keep` leaves the camera's white balance as it is. Mistakes in the
 unreadable, card full). Saving on the camera rewrites the file, so your own comments in it
 are lost.
 
-To compare engines on the A620, enable **Performance Metrics** and take the same
-set of shots with **EXFS** off and then on. Keep the recipe, capture mode, and RAW
-output settings the same. Use the JPEG numbers to identify each set in
-`CHDK/LOGS/PERF.CSV` and compare `hot_pixels_ms`, `tone_curve_ms`,
-`white_balance_ms`, and `raw_to_output_ms`.
+To compare engines on the A620, enable **Performance Metrics** and take the
+same set of shots with each engine selected. Turn off the flash and keep the
+recipe, grain controls, capture mode, and RAW output settings the same. Use
+the JPEG numbers to identify each set in `CHDK/LOGS/PERF.CSV` and compare
+`hot_pixels_ms`, `color_nr_ms`, `tone_curve_ms`, `grain_ms`, `white_balance_ms`,
+and `raw_to_output_ms`.
 
 ## Camera build requirements
 

@@ -391,6 +391,9 @@ static void shoot(char *raw)
     }
     filmsim_log_shot();
     filmsim_dr_curve_hook(1);
+#ifdef FILMSIM_EXFS
+    filmsim_log_shot_flush();
+#endif
 }
 
 // Zeit laufen lassen, Hauptschleife nachbilden
@@ -1368,6 +1371,7 @@ static void scenario_exfs(void)
 
     static const char *looks[] = {"Daylight 100", "Chrome 64", "Violet 400", "Noir 3200"};
     for (unsigned i = 0; i < sizeof(looks) / sizeof(looks[0]); i++) {
+        conf.film_exfs_11 = 0;
         film_by_name(looks[i]);
         conf.film_frame = i != 0;
         conf.film_grain = i ? 2 : 0;
@@ -1384,6 +1388,12 @@ static void scenario_exfs(void)
         memcpy(rawbuf, input, size);
         shoot((char *)rawbuf);
         CHECK(memcmp(reference, rawbuf, size) == 0, "EXFS render differs for %s", looks[i]);
+
+        conf.film_exfs = 0;
+        conf.film_exfs_11 = 1;
+        memcpy(rawbuf, input, size);
+        shoot((char *)rawbuf);
+        CHECK(memcmp(reference, rawbuf, size) == 0, "EXFS 1.1 render differs for %s", looks[i]);
     }
 
     free(reference);
@@ -1507,6 +1517,59 @@ static void scenario_exfs_hq_render(void)
     film_by_name("Kodak Gold 200");
     CHECK(exfs_hq_active_profile() && !conf.film_exfs, "Returning to Gold should reactivate HQ");
 
+    free(reference);
+    free(input);
+    free(rawbuf);
+}
+
+static void scenario_exfs_hq11_parity(void)
+{
+    unsigned size = camera_sensor.raw_size;
+    rawbuf = malloc(size);
+    unsigned char *input = malloc(size), *reference = malloc(size);
+    CHECK(rawbuf && input && reference, "RAW buffer allocation failed");
+    if (!rawbuf || !input || !reference)
+        goto out;
+
+    camera_on();
+    film_by_name("Kodak Gold 200");
+    raw_fill_test();
+    for (int y = 7; y < (int)camera_sensor.raw_rows; y += 29) {
+        for (int x = 0; x < (int)camera_sensor.raw_rowpix; x += 17) {
+            set_raw_pixel(x, y, 0);
+            set_raw_pixel(x, y - 1, 1023);
+        }
+    }
+    for (int y = 40; y < 56; y += 2) {
+        for (int x = 40; x < 56; x += 2) {
+            set_raw_pixel(x, y, 1);
+            set_raw_pixel(x + 1, y, 999);
+            set_raw_pixel(x, y + 1, 999);
+            set_raw_pixel(x + 1, y + 1, 1);
+        }
+    }
+    memcpy(input, rawbuf, size);
+    static const int levels[][3] = { {0, 0, 0}, {3, -3, 3}, {-2, 3, -3}, {-3, 0, 0} };
+    for (unsigned i = 0; i < sizeof(levels) / sizeof(levels[0]); ++i) {
+        conf.gold200_grain_amount = levels[i][0];
+        conf.gold200_grain_size = levels[i][1];
+        conf.gold200_grain_color = levels[i][2];
+        conf.film_exfs_hq = 1;
+        conf.film_exfs_hq_11 = 0;
+        memcpy(rawbuf, input, size);
+        now_ms = 1000;
+        shoot((char *)rawbuf);
+        memcpy(reference, rawbuf, size);
+
+        conf.film_exfs_hq = 0;
+        conf.film_exfs_hq_11 = 1;
+        memcpy(rawbuf, input, size);
+        // Both engines have processed the same number of shots at these ticks.
+        now_ms = 1000;
+        shoot((char *)rawbuf);
+        CHECK(memcmp(reference, rawbuf, size) == 0, "HQ 1.1 RAW differs at grain setting %u", i);
+    }
+out:
     free(reference);
     free(input);
     free(rawbuf);
@@ -1969,9 +2032,14 @@ int main(int argc, char **argv)
     else if (strcmp(what, "exfs") == 0) scenario_exfs();
     else if (strcmp(what, "exfs_hq_picker") == 0) scenario_exfs_hq_picker();
     else if (strcmp(what, "exfs_hq_render") == 0) scenario_exfs_hq_render();
+    else if (strcmp(what, "exfs_hq11_parity") == 0) scenario_exfs_hq11_parity();
     else if (strcmp(what, "exfs_hq_texture") == 0) scenario_exfs_hq_texture();
     else if (strcmp(what, "exfs_develop") == 0) {
         conf.film_exfs = 1;
+        scenario_develop();
+    }
+    else if (strcmp(what, "exfs_11_develop") == 0) {
+        conf.film_exfs_11 = 1;
         scenario_develop();
     }
 #endif

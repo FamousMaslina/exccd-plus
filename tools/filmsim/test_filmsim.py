@@ -70,7 +70,8 @@ def main():
                os.path.join(ROOT, "tools", "filmsim", "test_filmsim_host.c"),
                "-o", exe]
         if plat == "a620":
-            cmd[-2:-2] = [os.path.join(ROOT, "core", f) for f in ("exfilmsim.c", "exfilmsim_hq.c")]
+            cmd[-2:-2] = [os.path.join(ROOT, "core", f) for f in
+                          ("exfilmsim.c", "exfilmsim_hq.c", "exfilmsim_11.c", "exfilmsim_hq_11.c")]
         r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
         if r.returncode:
             print(plat, "Uebersetzen fehlgeschlagen:\n", r.stdout[-6000:])
@@ -78,8 +79,9 @@ def main():
             continue
         scenarios = [("names", str(v)) for v in range(6)] + [("picker",), ("raw",), ("develop",), ("thumb",), ("recipe",), ("aiso",), ("mixwb",)]
         if plat == "a620":
-            scenarios.extend([("quick_buttons",), ("jpeg_pair",), ("exfs",), ("exfs_develop",),
-                              ("exfs_hq_picker",), ("exfs_hq_render",), ("exfs_hq_texture",)])
+            scenarios.extend([("quick_buttons",), ("jpeg_pair",), ("exfs",), ("exfs_develop",), ("exfs_11_develop",),
+                              ("exfs_hq_picker",), ("exfs_hq_render",), ("exfs_hq_texture",),
+                              ("exfs_hq11_parity",)])
         for scenario in scenarios:
             r = subprocess.run([exe, scenario[0], ROOT] + list(scenario[1:]), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                text=True, encoding="ascii", errors="replace", timeout=600)

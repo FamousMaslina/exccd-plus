@@ -570,6 +570,8 @@ static ConfInfo conf_info[] = {
     CONF_INFO(281, conf.gold200_grain_amount,                   CONF_DEF_VALUE, i:0),
     CONF_INFO(282, conf.gold200_grain_size,                     CONF_DEF_VALUE, i:0),
     CONF_INFO(283, conf.gold200_grain_color,                    CONF_DEF_VALUE, i:0),
+    CONF_INFO(284, conf.film_exfs_11,                           CONF_DEF_VALUE, i:0),
+    CONF_INFO(285, conf.film_exfs_hq_11,                        CONF_DEF_VALUE, i:0),
 
     CONF_INFO(999, conf.script_allow_lua_native_calls,          CONF_DEF_VALUE, i:0),
 
@@ -975,6 +977,18 @@ static void conf_color_migrate(confColor *c, int old_bg, int old_fg, int new_bg,
     }
 }
 
+#ifdef FILMSIM_EXFS
+void conf_select_film_engine(int *selected)
+{
+    if (*selected) {
+        conf.film_exfs = selected == &conf.film_exfs;
+        conf.film_exfs_hq = selected == &conf.film_exfs_hq;
+        conf.film_exfs_11 = selected == &conf.film_exfs_11;
+        conf.film_exfs_hq_11 = selected == &conf.film_exfs_hq_11;
+    }
+}
+#endif
+
 void conf_restore()
 {
     int i;
@@ -1001,8 +1015,10 @@ void conf_restore()
     // clear any "clear on restart" values
     clear_values();
 #ifdef FILMSIM_EXFS
-    if (conf.film_exfs_hq)
-        conf.film_exfs = 0;
+    if (conf.film_exfs_hq_11)
+        conf_select_film_engine(&conf.film_exfs_hq_11);
+    else
+        conf_select_film_engine(conf.film_exfs_11 ? &conf.film_exfs_11 : &conf.film_exfs_hq);
 #endif
 #ifdef FILMSIM_QUICK_BUTTONS
     filmsim_normalize_quick_buttons();
@@ -1227,6 +1243,16 @@ static int setValue(ConfInfo *ci, unsigned short id, tConfigVal configVal, void 
 
     if (ret != CONF_EMPTY)
     {
+#ifdef FILMSIM_EXFS
+        if (ci == conf_info) {
+            switch (id) {
+            case 279: conf_select_film_engine(&conf.film_exfs); break;
+            case 280: conf_select_film_engine(&conf.film_exfs_hq); break;
+            case 284: conf_select_film_engine(&conf.film_exfs_11); break;
+            case 285: conf_select_film_engine(&conf.film_exfs_hq_11); break;
+            }
+        }
+#endif
         // Perform an updates required on change of value
         if (info_func)
             info_func(id);
