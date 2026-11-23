@@ -30,7 +30,7 @@ firmware version, and any test results.
       <img width="512" alt="Kodak Gold 200 EXFS HQ 1.0 " src="https://github.com/user-attachments/assets/669e9f06-cc8a-4f24-a789-6d1b5de7b9de" />
     </td>
     <td align="center">
-      <img width="384" height="512" alt="Kodak Gold 200 EXFS HQ 1.0 " src="https://github.com/user-attachments/assets/a0eeb1a8-3d07-460a-826e-cff18f3b93c5" />
+      <img width="512" height="384" alt="Kodak Gold 200 EXFS HQ 1.0" src="https://github.com/user-attachments/assets/89a79af3-3172-458e-a164-6dde6873571c" />
     </td>
      
   </tr>
