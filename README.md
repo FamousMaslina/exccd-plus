@@ -18,7 +18,49 @@ firmware version, and any test results.
 |---|---|---|
 | PowerShot A620 | 1.00f | Primary EXCCD+ build target |
 
-## ExFilmSim Engine (EXFS)
+
+## Samples
+
+<table>
+  <tr>
+    <td align="center">
+      <img width="512" alt="Kodak Gold 200 EXFS" src="https://github.com/user-attachments/assets/7d21cb56-4544-4cb0-a0c3-fbd35dcc5b46" />
+    </td>
+    <td align="center">
+      <img width="512" alt="Kodak Gold 200 EXFS HQ 1.0 " src="https://github.com/user-attachments/assets/669e9f06-cc8a-4f24-a789-6d1b5de7b9de" />
+    </td>
+    <td align="center">
+      <img width="384" height="512" alt="Kodak Gold 200 EXFS HQ 1.0 " src="https://github.com/user-attachments/assets/a0eeb1a8-3d07-460a-826e-cff18f3b93c5" />
+    </td>
+     
+  </tr>
+  <tr>
+    <td align="center"><b>Kodak Gold 200 — EXFS</b></td>
+    <td align="center"><b>Kodak Gold 200 — EXFS HQ 1.0</b></td>
+     <td align="center"><b>Kodak Gold 200 — EXFS HQ 1.0</b></td>
+  </tr>
+</table>
+<table>
+  <tr>
+    <td align="center">
+      <img width="512" height="384" alt="Kodak Gold 200 EXFS HQ 1.0" src="https://github.com/user-attachments/assets/2a8d2fcc-9c31-4daa-bc17-6824d8fc6d58" />
+    </td>
+    <td align="center">
+      <img width="512" height="384" alt="Chrome 64 EXFS" src="https://github.com/user-attachments/assets/ccc8203d-8026-4896-a31c-81848e8002f2" />
+    </td>
+    <td align="center">
+      <img width="384" height="512" alt="Reggie Porta EXFS" src="https://github.com/user-attachments/assets/d544668c-59d3-49fe-904c-e4961f80a547" />
+    </td>
+     
+  </tr>
+  <tr>
+    <td align="center"><b>Kodak Gold 200 — EXFS HQ 1.0</b></td>
+    <td align="center"><b>Chrome 64 — EXFS</b></td>
+     <td align="center"><b>Reggie Porta — EXFS</b></td>
+  </tr>
+</table>
+
+
 
 On the PowerShot A620, **EXCCD+ → EXFS** enables the optional
 ExFilmSim Engine. The checkbox defaults to off, which selects the original
@@ -82,7 +124,6 @@ pending changes.
 In the EXFS HQ 1.0 timing above, colour noise reduction took 18.33 s and
 grain took 16.45 s.
 
-**Sample images coming soon.**
 
 ## What's new
 
