@@ -82,19 +82,19 @@ regular Grain controls, and Canon JPEG processing.
 
 #### EXFS benchmarks
 
-These are same-scene **Kodak Gold 200** captures on the A620 1.00f. Each value
-is one successful capture measured from RAW handling to final JPEG close
-(`raw_to_output_ms`).
+These **Kodak Gold 200** timings on the A620 1.00f measure RAW handling
+through final JPEG close (`raw_to_output_ms`). Time saved compares the two
+engines timed in each row.
 
-| Capture mode | Grain | EXFS 1.0 | EXFS 1.1 | Time saved |
-|---|---|---:|---:|---:|
-| Single photo | Medium | 11.23 s | 9.08 s | **2.15 s (19.1%)** |
-| Single photo | Off | 5.81 s | 4.37 s | **1.44 s (24.8%)** |
-| Save Original JPEG | Off | 14.84 s | 11.79 s | **3.05 s (20.6%)** |
+| Capture mode | Grain | Original EXCCD | EXFS 1.0 | EXFS 1.1 | Time saved |
+|---|---|---:|---:|---:|---:|
+| Single photo | Off | 6.66 s | 5.85 s | — | **0.81 s (12.2%)** |
+| Single photo | Off | — | 5.81 s | 4.37 s | **1.44 s (24.8%)** |
+| Single photo | Medium | — | 11.23 s | 9.08 s | **2.15 s (19.1%)** |
+| Save Original JPEG | — | 14.01 s | 11.95 s | — | **2.06 s (14.7%)** |
+| Save Original JPEG | Off | — | 14.84 s | 11.79 s | **3.05 s (20.6%)** |
 
 In the Medium grain test, the grain stage dropped from 4.64 s to 3.55 s.
-An earlier Gold 200 benchmark measured 6.66 s with original EXCCD and 5.85 s
-with EXFS 1.0 for one JPEG, and 14.01 s and 11.95 s with Save Original JPEG.
 A separate flash-off test of EXFS 1.0 and EXFS 1.1 measured 4.99 s and
 4.06–4.18 s with Grain off, and 10.21 s and 7.19 s with Medium grain, from
 full shutter press through JPEG close.
@@ -158,8 +158,8 @@ pending changes.
 
 #### EXFS HQ benchmarks
 
-These captures are from the same A620 scene and Kodak Gold 200 benchmark as
-the standard EXFS table. Both HQ versions used the default grain amount.
+Both HQ versions used the default grain amount for these **Kodak Gold 200**
+captures on the A620 1.00f.
 
 | Capture mode | EXFS HQ 1.0 | EXFS HQ 1.1 | Time saved |
 |---|---:|---:|---:|
