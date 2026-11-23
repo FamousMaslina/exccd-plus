@@ -473,6 +473,13 @@ static void scenario_names(const char *variant)
         camera_on();
         CHECK(conf.film_sim == 2, "FILMS.TXT: Index %d statt 2", conf.film_sim);
         CHECK(strcmp(filmsim_name(), "Noir 3200") == 0, "FILMS.TXT: %s", filmsim_name());
+#ifdef FILMSIM_EXFS
+        conf.film_exfs = 1;
+#endif
+        conf.film_grain = 3;
+        filmsim_open_menu();
+        press(KEY_SET);
+        CHECK(conf.film_grain == 0, "A FILMS.TXT look should start with Grain off");
         break;
     case 2:     // Look gibt es nicht mehr: Aus
         fs_put(FILMS_TXT, two_looks, sizeof(two_looks) - 1);
@@ -543,6 +550,27 @@ static void scenario_picker(void)
     press(KEY_SET);
     CHECK(conf.film_sim == 0, "SET: Film %d", conf.film_sim);
     CHECK(alt_exits == 1, "SET schliesst nicht");
+
+    for (int film = 1; film <= total; ++film) {
+        conf.film_grain = 3;
+        filmsim_open_menu();
+        press(KEY_RIGHT);
+        press(KEY_SET);
+        CHECK(conf.film_sim == film && conf.film_grain == 0,
+              "Built-in look %d should start with Grain off", film);
+    }
+
+    filmsim_set(0);
+    fs_put("A/CHDK/FILMS/FILMS.BAK", two_looks, sizeof(two_looks) - 1);
+#ifdef FILMSIM_EXFS
+    conf.film_exfs_11 = 1;
+#endif
+    conf.film_grain = 3;
+    filmsim_open_catalog(1);
+    press(KEY_RIGHT);
+    press(KEY_SET);
+    CHECK(strcmp(filmsim_name(), "Pastel 400") == 0 && conf.film_grain == 0,
+          "A preset look should start with Grain off");
 }
 
 #ifdef FILMSIM_QUICK_BUTTONS

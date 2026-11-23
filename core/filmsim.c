@@ -1297,6 +1297,7 @@ static int film_gui_kbd(void)
             dev_fx_menu_open();
             break;
         }
+        conf.film_grain = 0;           // Standard grain starts off for each look selected in the picker.
         conf_save();
         film_gui_close();
         break;
