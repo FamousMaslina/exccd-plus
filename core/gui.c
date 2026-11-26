@@ -934,7 +934,7 @@ static void gui_show_build_info(__attribute__ ((unused))int arg)
     sprintf(buf, lang_str(LANG_MSG_BUILD_INFO_TEXT), camera_info.chdk_ver, camera_info.build_number, camera_info.build_svnrev, camera_info.build_date, camera_info.build_time, camera_info.platform, camera_info.platformsub, comp);
     strcat(buf, "\n" FILMSIM_PRODUCT_NAME " " FILMSIM_VERSION);
 #ifdef FILMSIM_EXFS
-    strcat(buf, "\nEXFS HQ " EXFS_HQ_VERSION " / " EXFS_HQ_11_VERSION);
+    strcat(buf, "\nEXFS HQ " EXFS_HQ_VERSION " / " EXFS_HQ_11_VERSION " / " EXFS_HQ_111_VERSION);
 #endif
     gui_mbox_init(LANG_MSG_BUILD_INFO_TITLE, (int)buf, MBOX_FUNC_RESTORE|MBOX_TEXT_LEFT, NULL);
 }
@@ -2541,6 +2541,18 @@ static void gui_filmsim_exfs_hq_11_changed(void)
 {
     conf_select_film_engine(&conf.film_exfs_hq_11);
 }
+
+static void gui_filmsim_exfs_hq_111_changed(void)
+{
+    conf_select_film_engine(&conf.film_exfs_hq_111);
+}
+
+static CMenuItem deprecated_engine_items[] = {
+    MENU_ITEM   (0x5c,LANG_EXCCD_EXFS_HQ_11,                 MENUITEM_BOOL|MENUITEM_ARG_CALLBACK, &conf.film_exfs_hq_11, gui_filmsim_exfs_hq_11_changed ),
+    MENU_ITEM   (0x51,LANG_MENU_BACK,                        MENUITEM_UP,        0, 0 ),
+    {0}
+};
+static CMenu deprecated_engine_menu = {0x5c, LANG_EXCCD_DEPRECATED_ENGINES, deprecated_engine_items};
 #endif
 
 // Oben Rezept und Look, darunter die Kamera fuer die Situation (nicht im Rezept)
@@ -2561,7 +2573,8 @@ static CMenuItem exccd_menu_items[] = {
     MENU_ITEM   (0x5c,LANG_EXCCD_EXFS,                       MENUITEM_BOOL|MENUITEM_ARG_CALLBACK, &conf.film_exfs, gui_filmsim_exfs_changed ),
     MENU_ITEM   (0x5c,LANG_EXCCD_EXFS_11,                    MENUITEM_BOOL|MENUITEM_ARG_CALLBACK, &conf.film_exfs_11, gui_filmsim_exfs_11_changed ),
     MENU_ITEM   (0x5c,LANG_EXCCD_EXFS_HQ,                    MENUITEM_BOOL|MENUITEM_ARG_CALLBACK, &conf.film_exfs_hq, gui_filmsim_exfs_hq_changed ),
-    MENU_ITEM   (0x5c,LANG_EXCCD_EXFS_HQ_11,                 MENUITEM_BOOL|MENUITEM_ARG_CALLBACK, &conf.film_exfs_hq_11, gui_filmsim_exfs_hq_11_changed ),
+    MENU_ITEM   (0x5c,LANG_EXCCD_EXFS_HQ_111,                MENUITEM_BOOL|MENUITEM_ARG_CALLBACK, &conf.film_exfs_hq_111, gui_filmsim_exfs_hq_111_changed ),
+    MENU_ITEM   (0x5c,LANG_EXCCD_DEPRECATED_ENGINES,         MENUITEM_SUBMENU,   &deprecated_engine_menu, 0 ),
 #endif
     MENU_ITEM   (0x0,(int)"",                               MENUITEM_SEPARATOR, 0, 0 ),
     MENU_ITEM   (0x61,LANG_EXCCD_SHUTTER,                   MENUITEM_ENUM,      gui_filmsim_tv_enum, 0 ),

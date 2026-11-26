@@ -503,7 +503,7 @@ static unsigned grain_apply_row(unsigned char *a, int stride, int x0, int x1,
     return next_state;
 }
 
-int exfs_hq11_grain(char *raw, const exfs_hq_profile *profile, int red_wb, int blue_wb)
+int exfs_hq11_grain(char *raw, const exfs_hq_profile *profile, int red_wb, int blue_wb, int reduced_grain)
 {
     static const unsigned char amount_scale[] = { 0, 35, 49, 64, 80, 100, 124 };
     static const unsigned char size_gain[] = { 71, 69, 67, 64, 61, 58, 54 };
@@ -541,6 +541,8 @@ int exfs_hq11_grain(char *raw, const exfs_hq_profile *profile, int red_wb, int b
         f->inv_red = 65536 / red_wb;
         f->inv_blue = 65536 / blue_wb;
         int gain = amount * size_gain[size - EXFS_HQ_LEVEL_MIN];
+        if (reduced_grain)
+            gain = (gain * 3 + 2) / 5;  // HQ 1.1.1 lowers the grain baseline by 40%.
         for (int v = 0; v < HQ_RAW_LEVELS; ++v) {
             int i = v >> 6, frac = v & 63;
             int amp = profile->tone_amplitude[i] * (64 - frac) + profile->tone_amplitude[i + 1] * frac;

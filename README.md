@@ -2,7 +2,7 @@
 # EXCCD+
 <img width="900" height="300" alt="exccdplus" src="https://github.com/user-attachments/assets/167387f4-b2bd-4155-afc7-9e13be0f9175" />
 
-EXCCD+ v1.3.1 combines the original [CHDK](https://chdk.fandom.com/) menu and script loader
+EXCCD+ +V0.0.1 (firmware build v1.3.2) combines the original [CHDK](https://chdk.fandom.com/) menu and script loader
 with the film looks from [EXCCD v1.10.2](https://github.com/35mmSebas/exccd). Each look
 combines Canon's *My Colors* settings with a tone curve applied before the camera creates the JPEG.
 
@@ -64,8 +64,9 @@ firmware version, and any test results.
 ## ExFilmSim (EXFS)
 
 On the PowerShot A620, the **EXCCD+** menu offers **EXFS 1.0**, **EXFS 1.1**,
-**EXFS HQ 1.0**, and **EXFS HQ 1.1**. Selecting one clears the other three.
-Clearing all four selects the original EXCCD engine, which is the default.
+**EXFS HQ 1.0**, and **EXFS HQ 1.1.1**. **EXFS HQ 1.1** is available under
+**Deprecated Engines**. Only one engine can be enabled at a time. With all
+engine switches off, the camera uses the standard EXCCD engine.
 
 **EXFS 1.0** speeds up the RAW hot-pixel scan, RGB tone curves, and white-balance
 correction after RAW development. Both standard versions use the same recipes,
@@ -107,7 +108,7 @@ a fixed seed. Canon JPEG bytes varied across repeat captures.
 ### ExFilmSim High Quality (EXFS HQ)
 
 EXFS HQ adds a separate grain model for **Kodak Gold 200** and custom looks
-that use `GOLD200.CV`. Both HQ versions use the same Gold 200 colour recipe,
+that use `GOLD200.CV`. All HQ versions use the same Gold 200 colour recipe,
 HQ grain controls, and Canon JPEG processing. Other looks use the corresponding
 standard EXFS version while HQ stays selected for the next compatible look.
 
@@ -173,6 +174,9 @@ processed RAW with HQ 1.0 and HQ 1.1 for all four tested presets.
 
 ## What's new
 
+- **+V0.0.1** Add **EXFS HQ 1.1.1** on the A620 with 40% less grain at the
+  default **Amount**. The grain levels are relative to the new baseline.
+  Find **EXFS HQ 1.1** under **Deprecated Engines**.
 - **v1.3.1** Start every look with **Grain Off** when selected from the film
   picker in EXCCD or standard EXFS. Saved recipe slots recall their stored
   Grain setting. EXFS HQ uses its own grain controls.
@@ -290,7 +294,7 @@ Use Dynamic+2 for highlight protection in automatic exposure modes.
 
 Build for your camera model and firmware version. For the A620 1.00f, run
 `sh tools/filmsim/build.sh a620` from the repository with the [build tools](#camera-build-requirements)
-on your PATH. Extract the resulting build from `dist/v1.3.1/` to the root of the SD card.
+on your PATH. Extract the resulting build from `dist/v1.3.2/` to the root of the SD card.
 On the A620, start manually in playback with **MENU → Firm Update**. For
 autostart, use **EXCCD+ → System → Make Card Bootable...**, then lock the SD card and restart.
 

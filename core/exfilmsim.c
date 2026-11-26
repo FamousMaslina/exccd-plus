@@ -103,10 +103,15 @@ static void exfs_hq_render(char *raw, int developing, int pair_helper, const exf
     exfs_render_pipeline(raw, developing, pair_helper, profile);
 }
 
+int exfs_hq_11_selected(void)
+{
+    return conf.film_exfs_hq_11 || conf.film_exfs_hq_111;
+}
+
 int exfs_render_selected(char *raw, int developing, int pair_helper)
 {
     const exfs_hq_profile *profile = exfs_hq_active_profile();
-    if (conf.film_exfs_11 || conf.film_exfs_hq_11) {
+    if (conf.film_exfs_11 || exfs_hq_11_selected()) {
         exfs11_render(raw, developing, pair_helper, profile);
         return 1;
     }

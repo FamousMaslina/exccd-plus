@@ -499,6 +499,7 @@ typedef struct
     int gold200_grain_color;
     int film_exfs_11;
     int film_exfs_hq_11;
+    int film_exfs_hq_111;
 
 } Conf;
 

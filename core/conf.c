@@ -572,6 +572,7 @@ static ConfInfo conf_info[] = {
     CONF_INFO(283, conf.gold200_grain_color,                    CONF_DEF_VALUE, i:0),
     CONF_INFO(284, conf.film_exfs_11,                           CONF_DEF_VALUE, i:0),
     CONF_INFO(285, conf.film_exfs_hq_11,                        CONF_DEF_VALUE, i:0),
+    CONF_INFO(286, conf.film_exfs_hq_111,                       CONF_DEF_VALUE, i:0),
 
     CONF_INFO(999, conf.script_allow_lua_native_calls,          CONF_DEF_VALUE, i:0),
 
@@ -985,6 +986,7 @@ void conf_select_film_engine(int *selected)
         conf.film_exfs_hq = selected == &conf.film_exfs_hq;
         conf.film_exfs_11 = selected == &conf.film_exfs_11;
         conf.film_exfs_hq_11 = selected == &conf.film_exfs_hq_11;
+        conf.film_exfs_hq_111 = selected == &conf.film_exfs_hq_111;
     }
 }
 #endif
@@ -1015,7 +1017,9 @@ void conf_restore()
     // clear any "clear on restart" values
     clear_values();
 #ifdef FILMSIM_EXFS
-    if (conf.film_exfs_hq_11)
+    if (conf.film_exfs_hq_111)
+        conf_select_film_engine(&conf.film_exfs_hq_111);
+    else if (conf.film_exfs_hq_11)
         conf_select_film_engine(&conf.film_exfs_hq_11);
     else
         conf_select_film_engine(conf.film_exfs_11 ? &conf.film_exfs_11 : &conf.film_exfs_hq);
@@ -1250,6 +1254,7 @@ static int setValue(ConfInfo *ci, unsigned short id, tConfigVal configVal, void 
             case 280: conf_select_film_engine(&conf.film_exfs_hq); break;
             case 284: conf_select_film_engine(&conf.film_exfs_11); break;
             case 285: conf_select_film_engine(&conf.film_exfs_hq_11); break;
+            case 286: conf_select_film_engine(&conf.film_exfs_hq_111); break;
             }
         }
 #endif

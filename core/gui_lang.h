@@ -944,8 +944,10 @@
 #define LANG_EXCCD_HQ_GRAIN_HELP                811
 #define LANG_EXCCD_EXFS_11                      812
 #define LANG_EXCCD_EXFS_HQ_11                   813
+#define LANG_EXCCD_EXFS_HQ_111                  814
+#define LANG_EXCCD_DEPRECATED_ENGINES           815
 
-#define GUI_LANG_ITEMS                          813
+#define GUI_LANG_ITEMS                          815
 
 //-------------------------------------------------------------------
 extern void gui_lang_init();

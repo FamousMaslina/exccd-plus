@@ -401,10 +401,14 @@ static const filmsim_t* current(void)
 }
 
 #ifdef FILMSIM_EXFS
+static int exfs_hq_selected(void)
+{
+    return conf.film_exfs_hq || exfs_hq_11_selected();
+}
+
 const exfs_hq_profile *exfs_hq_active_profile(void)
 {
-    return (conf.film_exfs_hq || conf.film_exfs_hq_11)
-        ? exfs_hq_profile_for_curve(current()->curve) : NULL;
+    return exfs_hq_selected() ? exfs_hq_profile_for_curve(current()->curve) : NULL;
 }
 #endif
 
@@ -1035,7 +1039,11 @@ static void hq_settings_draw(void)
     int y = (camera_screen.height - 9 * FONT_HEIGHT) / 2;
     draw_rectangle(0, 0, camera_screen.width - 1, camera_screen.height - 1,
                    MAKE_COLOR(COLOR_BLACK, COLOR_BLACK), RECT_BORDER0|DRAW_FILLED);
-    const int engine_label = conf.film_exfs_hq_11 ? LANG_EXCCD_EXFS_HQ_11 : LANG_EXCCD_EXFS_HQ;
+    int engine_label = LANG_EXCCD_EXFS_HQ;
+    if (conf.film_exfs_hq_111)
+        engine_label = LANG_EXCCD_EXFS_HQ_111;
+    else if (conf.film_exfs_hq_11)
+        engine_label = LANG_EXCCD_EXFS_HQ_11;
     draw_string(x, y, lang_str(engine_label), MAKE_COLOR(COLOR_BLACK, COLOR_WHITE));
     draw_string(x, y + FONT_HEIGHT, sim_name(picker_offset + sel), MAKE_COLOR(COLOR_BLACK, EX_GREY));
     for (int i = 0; i < EXFS_HQ_CONTROLS; ++i) {
@@ -1202,8 +1210,8 @@ static void bar_draw(void)
     int help = LANG_EXCCD_PICK_HELP;
 #ifdef FILMSIM_EXFS
     if (film_hq_profile(film))
-        help = (conf.film_exfs_hq || conf.film_exfs_hq_11) ? LANG_EXCCD_HQ_PICK_HELP : LANG_EXCCD_HQ_COMPATIBLE;
-    else if (film && (conf.film_exfs_hq || conf.film_exfs_hq_11))
+        help = exfs_hq_selected() ? LANG_EXCCD_HQ_PICK_HELP : LANG_EXCCD_HQ_COMPATIBLE;
+    else if (film && exfs_hq_selected())
         help = LANG_EXCCD_HQ_FALLBACK;
 #endif
     const char *hl = lang_str(help);
@@ -1278,7 +1286,7 @@ static int film_gui_kbd(void)
         break;
     case KEY_DOWN:
 #ifdef FILMSIM_EXFS
-        if (sel && (conf.film_exfs_hq || conf.film_exfs_hq_11)) {
+        if (sel && exfs_hq_selected()) {
             const exfs_hq_profile *profile = film_hq_profile(picker_offset + sel);
             if (profile) {
                 hq_settings_open(profile);
@@ -1925,7 +1933,7 @@ void filmsim_log_shot(void)
     shot_skip_last = shot_skip;
     strcat(line, "\r\n");
 #ifdef FILMSIM_EXFS
-    if (conf.film_exfs_11 || conf.film_exfs_hq_11) {
+    if (conf.film_exfs_11 || exfs_hq_11_selected()) {
         // Keep the current shot metadata. Write it once Canon can start the JPEG.
         strcpy(deferred_shot_log, line);
         return;
@@ -2575,7 +2583,7 @@ __attribute__((optimize("O2"))) static void effects_grain(char *raw)
         grain_amp_build(amp, pct);
         unsigned seed = (unsigned)get_tick_count() * 2654435761u;
 #ifdef FILMSIM_EXFS
-        if (conf.film_exfs_11 || conf.film_exfs_hq_11)
+        if (conf.film_exfs_11 || exfs_hq_11_selected())
             exfs11_grain(raw, 65536 / WB_R, 65536 / WB_B, amp, up, seed);
         else
 #endif
@@ -2681,7 +2689,7 @@ static void filmsim_cnr_apply(char *raw)
     int R = hq_strength ? 1 : (level == 1 ? 2 : (level == 2 ? CNR_RMAX : 0));
     if (!R || !raw || !filmsim_photo_mode()) return;
 #ifdef FILMSIM_EXFS
-    if (hq_strength && conf.film_exfs_hq_11) {
+    if (hq_strength && exfs_hq_11_selected()) {
         if (!exfs_hq11_chroma(raw, hq_strength, WB_R, WB_B))
             shot_skip |= SKIP_CNR;
         return;
@@ -2861,8 +2869,8 @@ void filmsim_effects_apply(char *raw)
     if (profile) {
         int wr, wb;
         shot_wb_gains(&wr, &wb);
-        int ok = conf.film_exfs_hq_11 ? exfs_hq11_grain(raw, profile, wr, wb)
-                                     : exfs_hq_grain(raw, profile, wr, wb);
+        int ok = exfs_hq_11_selected() ? exfs_hq11_grain(raw, profile, wr, wb, conf.film_exfs_hq_111)
+                                       : exfs_hq_grain(raw, profile, wr, wb);
         if (!ok)
             shot_skip |= SKIP_GRAIN;
     } else
