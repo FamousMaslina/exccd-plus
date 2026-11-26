@@ -14,9 +14,8 @@ env:
   XPACK_VERSION: 10.3.1-2.3
 
 # Kameras kommen aus tools/filmsim/cameras.txt: jede wird in einem eigenen
-# Job auf einer frischen Maschine gebaut. Das GitHub-Release bekommt nur
-# Kameras mit Status "stabil", die Webseite alle (Status "test" dort als Beta,
-# damit Nutzer sie mit der Testseite #test pruefen koennen).
+# Job auf einer frischen Maschine gebaut. GitHub-Releases enthalten nur
+# Quellcode. Die Webseite bietet die Firmware-Builds und den Installer an.
 jobs:
   setup:
     runs-on: ubuntu-24.04
@@ -54,6 +53,11 @@ jobs:
         run: |
           gcc -Wall -Wextra -I core -o "$RUNNER_TEMP/test_recipes" tools/filmsim/test_recipes.c core/filmsim_recipe.c
           "$RUNNER_TEMP/test_recipes"
+
+      - name: PC-Test EXLS
+        run: |
+          gcc -std=c99 -O2 -I core -o "$RUNNER_TEMP/test_exls" tools/filmsim/test_exls.c core/exls_cube.c core/exls_lut.c
+          "$RUNNER_TEMP/test_exls"
 
       - name: PC-Test SD-Installer (Bootsektor, Kameraliste)
         run: |
@@ -175,15 +179,6 @@ jobs:
           make -C tools/installer test_core
           tools/installer/test_core tools/filmsim/cameras.txt "$RUNNER_TEMP/installer" dist/*.zip
 
-      - name: Stabile Kameras auswaehlen
-        run: |
-          mkdir -p release
-          # nur die erste Firmware ist auf der Kamera getestet (cameras.txt)
-          for cam in $(awk '!/^#/ && $3 == "stabil" { split($2, s, ","); print $1 "-" s[1] }' tools/filmsim/cameras.txt); do
-            cp "dist/exccd-plus-$VERSION-$cam-full.zip" release/
-          done
-          ls -l release
-
       - name: Download-Webseite bauen und pruefen
         run: |
           sudo apt-get update -q && sudo apt-get install -y python3-pil
@@ -201,12 +196,6 @@ jobs:
         if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
         with:
           path: _site
-
-      - name: Release anlegen
-        if: github.ref_type == 'tag'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" release/*.zip installer/exccd-installer.exe --title "EXCCD+ $GITHUB_REF_NAME" --generate-notes
 
   # Webseite nur bei Releases (Tag) oder von Hand veroeffentlichen.
   # Einmalig im Repo einstellen: Settings -> Pages -> Source: GitHub Actions

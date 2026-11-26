@@ -25,6 +25,7 @@
 #include "clock.h"
 #include "dirent.h"
 #include "filmsim.h"
+#include "exls.h"
 #ifdef FILMSIM_EXFS
 #include "exfilmsim_hq.h"
 #endif
@@ -2555,6 +2556,50 @@ static CMenuItem deprecated_engine_items[] = {
 static CMenu deprecated_engine_menu = {0x5c, LANG_EXCCD_DEPRECATED_ENGINES, deprecated_engine_items};
 #endif
 
+#ifdef FILMSIM_EXLS
+static void gui_exls_changed(void)
+{
+    conf_select_film_engine(&conf.film_exls);
+    filmsim_apply();
+}
+
+static void gui_exls_selected(const char *path)
+{
+    if (!path) return;
+    exls_result result = exls_check_file(path);
+    if (result == EXLS_OK) {
+        strcpy(conf.film_exls_file, path);
+    } else {
+        const char *message = result == EXLS_NO_LUT ? "Select a .cube file" : exls_message(result);
+        gui_mbox_init((int)"EXLS", (int)message,
+                      MBOX_FUNC_RESTORE | MBOX_TEXT_CENTER | MBOX_BTN_OK, NULL);
+    }
+}
+
+static void gui_exls_pick(__attribute__((unused)) int arg)
+{
+    libfselect->file_select((int)"Select Cube", exls_name() ? conf.film_exls_file : EXLS_LUT_DIR,
+                           EXLS_LUT_DIR, gui_exls_selected);
+}
+
+static const char *gui_exls_strength(int change, __attribute__((unused)) int arg)
+{
+    static char text[6];
+    int v = exls_strength() + change;
+    conf.film_exls_strength = v < 0 ? 0 : v > 100 ? 100 : v;
+    sprintf(text, "%d%%", conf.film_exls_strength);
+    return text;
+}
+
+static CMenuItem exls_menu_items[] = {
+    MENU_ITEM(0x5f, (int)"Select Cube", MENUITEM_PROC, gui_exls_pick, 0),
+    MENU_ITEM(0x5f, (int)"LUT intensity", MENUITEM_ENUM, gui_exls_strength, 0),
+    MENU_ITEM(0x51, LANG_MENU_BACK, MENUITEM_UP, 0, 0),
+    {0}
+};
+static CMenu exls_menu = {0x5c, (int)"EXLS settings", exls_menu_items};
+#endif
+
 // Oben Rezept und Look, darunter die Kamera fuer die Situation (nicht im Rezept)
 static CMenuItem exccd_menu_items[] = {
     MENU_ITEM   (0x5f,LANG_EXCCD_SELECT_FILM,               MENUITEM_PROC,      gui_filmsim_select, 0 ),
@@ -2574,6 +2619,10 @@ static CMenuItem exccd_menu_items[] = {
     MENU_ITEM   (0x5c,LANG_EXCCD_EXFS_11,                    MENUITEM_BOOL|MENUITEM_ARG_CALLBACK, &conf.film_exfs_11, gui_filmsim_exfs_11_changed ),
     MENU_ITEM   (0x5c,LANG_EXCCD_EXFS_HQ,                    MENUITEM_BOOL|MENUITEM_ARG_CALLBACK, &conf.film_exfs_hq, gui_filmsim_exfs_hq_changed ),
     MENU_ITEM   (0x5c,LANG_EXCCD_EXFS_HQ_111,                MENUITEM_BOOL|MENUITEM_ARG_CALLBACK, &conf.film_exfs_hq_111, gui_filmsim_exfs_hq_111_changed ),
+#ifdef FILMSIM_EXLS
+    MENU_ITEM   (0x5c,(int)"EXLS 1.0",                      MENUITEM_BOOL|MENUITEM_ARG_CALLBACK, &conf.film_exls, gui_exls_changed ),
+    MENU_ITEM   (0x5f,(int)"EXLS settings",                 MENUITEM_SUBMENU,   &exls_menu, 0 ),
+#endif
     MENU_ITEM   (0x5c,LANG_EXCCD_DEPRECATED_ENGINES,         MENUITEM_SUBMENU,   &deprecated_engine_menu, 0 ),
 #endif
     MENU_ITEM   (0x0,(int)"",                               MENUITEM_SEPARATOR, 0, 0 ),

@@ -353,6 +353,11 @@ void raw_process(void)
 
     }
 
+#ifdef FILMSIM_EXLS
+    if (filmsim_selected_engine() == FILMSIM_ENGINE_EXLS)
+        filmsim_exls_render(rawadr, developing, pair_helper);
+    else
+#endif
 #ifdef FILMSIM_EXFS
     if (!exfs_render_selected(rawadr, developing, pair_helper))
 #endif

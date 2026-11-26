@@ -111,7 +111,7 @@ int exfs_hq_11_selected(void)
 int exfs_render_selected(char *raw, int developing, int pair_helper)
 {
     filmsim_engine engine = filmsim_selected_engine();
-    if (engine == FILMSIM_ENGINE_EXCCD)
+    if (engine == FILMSIM_ENGINE_EXCCD || engine == FILMSIM_ENGINE_EXLS)
         return 0;
 
     const exfs_hq_profile *profile = exfs_hq_active_profile();

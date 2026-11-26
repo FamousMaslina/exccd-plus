@@ -574,6 +574,11 @@ static ConfInfo conf_info[] = {
     CONF_INFO(285, conf.film_exfs_hq_11,                        CONF_DEF_VALUE, i:0),
     CONF_INFO(286, conf.film_exfs_hq_111,                       CONF_DEF_VALUE, i:0),
     CONF_INFO(287, conf.film_show_engine_osd,                   CONF_DEF_VALUE, i:0),
+#ifdef FILMSIM_EXLS
+    CONF_INFO(288, conf.film_exls,                              CONF_DEF_VALUE, i:0),
+    CONF_INFO(289, conf.film_exls_strength,                     CONF_DEF_VALUE, i:100),
+    CONF_INFO(290, conf.film_exls_file,                         CONF_CHAR_PTR,  ptr:""),
+#endif
 
     CONF_INFO(999, conf.script_allow_lua_native_calls,          CONF_DEF_VALUE, i:0),
 
@@ -988,6 +993,9 @@ void conf_select_film_engine(int *selected)
         conf.film_exfs_11 = selected == &conf.film_exfs_11;
         conf.film_exfs_hq_11 = selected == &conf.film_exfs_hq_11;
         conf.film_exfs_hq_111 = selected == &conf.film_exfs_hq_111;
+#ifdef FILMSIM_EXLS
+        conf.film_exls = selected == &conf.film_exls;
+#endif
     }
 }
 #endif
@@ -1018,6 +1026,12 @@ void conf_restore()
     // clear any "clear on restart" values
     clear_values();
 #ifdef FILMSIM_EXFS
+#ifdef FILMSIM_EXLS
+    conf.film_exls_file[sizeof(conf.film_exls_file) - 1] = 0;
+    if (conf.film_exls)
+        conf_select_film_engine(&conf.film_exls);
+    else
+#endif
     if (conf.film_exfs_hq_111)
         conf_select_film_engine(&conf.film_exfs_hq_111);
     else if (conf.film_exfs_hq_11)
@@ -1256,6 +1270,9 @@ static int setValue(ConfInfo *ci, unsigned short id, tConfigVal configVal, void 
             case 284: conf_select_film_engine(&conf.film_exfs_11); break;
             case 285: conf_select_film_engine(&conf.film_exfs_hq_11); break;
             case 286: conf_select_film_engine(&conf.film_exfs_hq_111); break;
+#ifdef FILMSIM_EXLS
+            case 288: conf_select_film_engine(&conf.film_exls); break;
+#endif
             }
         }
 #endif

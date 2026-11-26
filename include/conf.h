@@ -501,6 +501,9 @@ typedef struct
     int film_exfs_hq_11;
     int film_exfs_hq_111;
     int film_show_engine_osd;
+    int film_exls;
+    int film_exls_strength;
+    char film_exls_file[CONF_STR_LEN];
 
 } Conf;
 

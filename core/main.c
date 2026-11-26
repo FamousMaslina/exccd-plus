@@ -9,6 +9,7 @@
 #include "shooting.h"
 #include "jpeg_iso.h"
 #include "filmsim.h"
+#include "exls.h"
 
 #include "edgeoverlay.h"
 #include "module_load.h"
@@ -186,6 +187,9 @@ void core_spytask()
         "A/CHDK/MODULES/CFG",
         "A/CHDK/GRIDS",
         "A/CHDK/CURVES",
+#ifdef FILMSIM_EXLS
+        EXLS_LUT_DIR,
+#endif
         "A/CHDK/DATA",
         "A/CHDK/LOGS",
         "A/CHDK/EDGE",

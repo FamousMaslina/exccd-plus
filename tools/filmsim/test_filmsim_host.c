@@ -2066,6 +2066,90 @@ static void scenario_jpeg_pair(void)
 }
 #endif
 
+#ifdef FILMSIM_EXLS
+static void scenario_exls(void)
+{
+    static const char path[] = "A/CHDK/LUTS/TEST.CUB";
+    static const char perf_csv[] = "A/CHDK/LOGS/PERF.CSV";
+    static const char single[] = "A/DCIM/100CANON/IMG_8344.JPG";
+    static const char original[] = "A/DCIM/100CANON/IMG_8345.JPG";
+    static const char helper[] = "A/DCIM/100CANON/IMG_8346.JPG";
+    static const char jpeg[] = { (char)0xff, (char)0xd8, (char)0xff, (char)0xd9 };
+    unsigned short sensor[40] = {0};
+    char *raw = (char *)sensor;
+    camera_on();
+    camera_sensor.raw_rowlen = 20;
+    camera_sensor.raw_rowpix = 16;
+    camera_sensor.raw_rows = 4;
+    camera_sensor.raw_size = sizeof(sensor);
+    camera_sensor.active_area.x1 = 0;
+    camera_sensor.active_area.y1 = 0;
+    camera_sensor.active_area.x2 = 16;
+    camera_sensor.active_area.y2 = 4;
+    memset(sensor, 42, sizeof(sensor));
+    char before[sizeof(sensor)];
+    memcpy(before, sensor, sizeof(sensor));
+
+    conf.film_exls = 1;
+    conf.film_exls_strength = 100;
+    strcpy(conf.film_exls_file, path);
+    CHECK(filmsim_selected_engine() == FILMSIM_ENGINE_EXLS, "EXLS was not selected");
+    CHECK(!exfs_render_selected(raw, 0, 0), "The EXFS dispatcher must leave EXLS to its own engine");
+    CHECK(strcmp(filmsim_perf_enum(1, 0), "On") == 0, "Metrics need no film recipe in EXLS");
+    CHECK(strcmp(filmsim_pair_enum(1, 0), "On") == 0, "Pairing needs no film recipe in EXLS");
+    conf.film_dr = 2;
+    CHECK(filmsim_dr_tv96_shift(1) == 0, "EXLS must bypass film exposure shifts");
+    shooting_set_prop(PROPCASE_MY_COLORS, MC_CUSTOM);
+    filmsim_pair_prepare_capture();
+    CHECK(shooting_get_prop(PROPCASE_MY_COLORS) == MC_OFF, "EXLS must use Canon neutral colour");
+
+    int fd = open(path, O_WRONLY | O_CREAT, 0777);
+    const char header[] = "LUT_3D_SIZE 9\n";
+    write(fd, header, sizeof(header) - 1);
+    for (int i = 0; i < 729; i++) write(fd, "0.2 0.3 0.4\n", 12);
+    close(fd);
+
+    conf.film_exls_strength = 0;
+    CHECK(!filmsim_pair_original(raw, 125), "0%% must bypass the helper capture");
+    conf.film_exls_strength = 100;
+    file_number = 8344;
+    filmsim_perf_begin(FILMSIM_PERF_SINGLE);
+    filmsim_exls_render(raw, 0, 0);
+    filmsim_perf_raw_done(0);
+    filmsim_pair_filewrite(single);
+    filmsim_pair_file_closed();
+    filmsim_tick();
+    CHECK(memcmp(sensor, before, sizeof(sensor)) != 0, "EXLS did not modify valid packed RAW");
+    CHECK(strstr(card_text(perf_csv), "\"TEST.CUB\"") && strstr(card_text(perf_csv), ";EXLS 1.0\r\n"),
+          "EXLS performance row missing: %s", card_text(perf_csv));
+
+    memcpy(sensor, before, sizeof(sensor));
+    file_number = 8345;
+    CHECK(filmsim_pair_original(raw, 125), "EXLS original did not queue a helper");
+    filmsim_perf_raw_done(1);
+    filmsim_pair_filewrite(original);
+    fs_put(original, jpeg, sizeof(jpeg));
+    filmsim_pair_file_closed();
+    filmsim_tick();
+    filmsim_pair_kbd();
+    CHECK(filmsim_pair_helper(), "EXLS helper did not start");
+    file_number = 8346;
+    filmsim_pair_perf_helper_begin();
+    filmsim_pair_helper_raw(1);
+    remove(path);
+    filmsim_exls_render(raw, 1, 1);
+    filmsim_perf_raw_done(0);
+    filmsim_pair_filewrite(helper);
+    fs_put(helper, jpeg, sizeof(jpeg));
+    filmsim_pair_file_closed();
+    filmsim_tick();
+    CHECK(memcmp(sensor, before, sizeof(sensor)) == 0, "Failed EXLS altered RAW");
+    CHECK(fs_find(original) >= 0 && fs_find(helper) < 0, "Failed EXLS must retain the original only");
+    CHECK(strstr(card_text(perf_csv), "keep_original_jpeg;exls_io;;100CANON/IMG_8345.JPG;") &&
+          strstr(card_text(perf_csv), ";Canon\r\n"), "Fallback must report Canon: %s", card_text(perf_csv));
+}
+#endif
+
 int main(int argc, char **argv)
 {
     const char *what = argc > 1 ? argv[1] : "";
@@ -2098,6 +2182,9 @@ int main(int argc, char **argv)
 #endif
 #ifdef FILMSIM_JPEG_PAIR
     else if (strcmp(what, "jpeg_pair") == 0) scenario_jpeg_pair();
+#endif
+#ifdef FILMSIM_EXLS
+    else if (strcmp(what, "exls") == 0) scenario_exls();
 #endif
     else { printf("Szenario?\n"); return 2; }
     printf("%s (%d Fehler)\n", fails ? "FEHLER" : "ok", fails);

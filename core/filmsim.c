@@ -27,6 +27,7 @@
 #include "gui_menu.h"
 #include "keyboard.h"
 #include "filmsim.h"
+#include "exls.h"
 #include "filmsim_txt.h"
 #include "filmsim_recipe.h"
 #include "lens.h"
@@ -425,10 +426,15 @@ static const char *const engine_names[] = {
     [FILMSIM_ENGINE_HQ_10] = "EXFS HQ 1.0",
     [FILMSIM_ENGINE_HQ_11] = "EXFS HQ 1.1",
     [FILMSIM_ENGINE_HQ_111] = "EXFS HQ 1.1.1",
+    [FILMSIM_ENGINE_EXLS] = "EXLS 1.0",
+    [FILMSIM_ENGINE_CANON] = "Canon",
 };
 
 filmsim_engine filmsim_selected_engine(void)
 {
+#ifdef FILMSIM_EXLS
+    if (conf.film_exls) return FILMSIM_ENGINE_EXLS;
+#endif
 #ifdef FILMSIM_EXFS
     if (conf.film_exfs_hq_111) return FILMSIM_ENGINE_HQ_111;
     if (conf.film_exfs_hq_11) return FILMSIM_ENGINE_HQ_11;
@@ -470,6 +476,9 @@ static int preview_pending = 0;
 static void set_canon_props(const filmsim_t *s)
 {
     set_count++;
+#ifdef FILMSIM_EXLS
+    if (conf.film_exls) s = &sims[0];
+#endif
 #ifdef FS_NO_MYCOLORS
     (void)s;
 #else
@@ -488,6 +497,9 @@ static void set_canon_props(const filmsim_t *s)
 
 static int canon_props_match(const filmsim_t *s)
 {
+#ifdef FILMSIM_EXLS
+    if (conf.film_exls) s = &sims[0];
+#endif
 #ifdef FS_NO_MYCOLORS
     (void)s;
     return 1;
@@ -806,6 +818,9 @@ void filmsim_develop_select(const char *fn)
     dev_armed = 1;
     dev_fx_init();
     dev_ev = dev_temp = dev_tint = dev_dr = 0;
+#ifdef FILMSIM_EXLS
+    if (conf.film_exls) return;
+#endif
     if (!dev_list_open()) filmsim_open_menu();  // ohne Speicher: Laschen, ein Look
 }
 
@@ -958,7 +973,11 @@ void filmsim_tick(void)
         conf.film_iso_prev = -1;
         conf.film_grain = 0;
     }
-    if (conf.film_sim == 0) return;  // "Aus": Canon-Farben nicht anfassen
+    if (conf.film_sim == 0
+#ifdef FILMSIM_EXLS
+        && !conf.film_exls
+#endif
+    ) return;  // "Aus": Canon-Farben nicht anfassen
 
     const filmsim_t *s = current();
 #ifdef FILMSIM_JPEG_PAIR
@@ -986,6 +1005,9 @@ void filmsim_set(int v)
     film_name_store();
     look_text_update();
     if (v == 0) {
+#ifdef FILMSIM_EXLS
+        if (!conf.film_exls)
+#endif
         conf.film_save_original_jpeg = 0;
         // zurueck auf Canon-Standard
 #ifndef FS_NO_MYCOLORS
@@ -1675,6 +1697,25 @@ void filmsim_draw_osd(void)
         int y = camera_screen.height - 2 * FONT_HEIGHT - 4;
         draw_string(x < 0 ? 0 : x, y, engine, user_color(conf.osd_color));
     }
+#ifdef FILMSIM_EXLS
+    static int was_exls;
+    if (was_exls != !!conf.film_exls) gui_set_need_restore();
+    was_exls = !!conf.film_exls;
+    if (conf.film_exls) {
+        const char *name = exls_name();
+        int max = camera_screen.width / FONT_WIDTH;
+        if (dev_armed)
+            sprintf(buf, "Develop %.20s", dev_name);
+        else if (name)
+            sprintf(buf, "EXLS %.*s %d%%", max > 11 ? max - 11 : 0, name, exls_strength());
+        else
+            strcpy(buf, "EXLS: No Cube selected");
+        int x = (camera_screen.width - (int)strlen(buf) * FONT_WIDTH) / 2;
+        draw_string(x < 0 ? 0 : x, camera_screen.height - FONT_HEIGHT - 4,
+                    buf, user_color(conf.osd_color));
+        return;
+    }
+#endif
     if (was_pending && !preview_pending)
         gui_set_need_restore();      // laengeren Hinweis einmal wegwischen
     was_pending = preview_pending;
@@ -1945,7 +1986,11 @@ void filmsim_log_shot(void)
         dev_name[0] = 0;
     }
     shot_path(line);
-    sprintf(line + strlen(line), ";%s", filmsim_name());
+    const char *look = filmsim_name();
+#ifdef FILMSIM_EXLS
+    if (conf.film_exls) look = engine_names[FILMSIM_ENGINE_EXLS];
+#endif
+    sprintf(line + strlen(line), ";%s", look);
     if (dev_name[0] || shot_skip) {     // dritte Spalte: entwickelt aus dieser Datei
         strcat(line, ";");
         strcat(line, dev_name);
@@ -2017,6 +2062,9 @@ static filmsim_perf_stage perf_jpeg_stage;
 
 static int perf_recipe_available(void)
 {
+#ifdef FILMSIM_EXLS
+    if (conf.film_exls) return 1;
+#endif
     return (conf.film_sim > 0 && film_at(conf.film_sim)) || recipe_active();
 }
 
@@ -2153,6 +2201,15 @@ void filmsim_perf_begin(filmsim_perf_mode mode)
         perf.ms[i] = -1;
     perf.slot = recipe_active();
     sprintf(perf.look, "%.23s", filmsim_name());
+#ifdef FILMSIM_EXLS
+    if (conf.film_exls) {
+        const char *name = exls_name();
+        perf.slot = 0;
+        sprintf(perf.look, "%.23s", name ? name : "EXLS");
+        // The first exposure in a pair always uses Canon's neutral pipeline.
+        filmsim_perf_set_engine(FILMSIM_ENGINE_CANON);
+    }
+#endif
     perf.number = shot_path(mode == FILMSIM_PERF_PAIR ? perf.original : perf.custom);
     perf.start_tick = get_tick_count();
 }
@@ -3538,6 +3595,9 @@ const char* filmsim_dr_enum(int change, __attribute__ ((unused))int arg)
 int filmsim_dr_tv96_shift(int automatic)
 {
     shot_dr = 0;
+#ifdef FILMSIM_EXLS
+    if (conf.film_exls) return 0;
+#endif
     if (!automatic) return 0;
     if (conf.film_dr < 1 || conf.film_dr > 2) return 0;
     if (!filmsim_photo_mode()) return 0;
@@ -3556,6 +3616,9 @@ void filmsim_dr_curve_hook(int end)
 {
     int want = end ? ((conf.film_dr >= 1 && conf.film_dr <= 2) ? conf.film_dr : 0) : shot_dr;
     if (end) shot_dr = -1;
+#ifdef FILMSIM_EXLS
+    if (conf.film_exls) return;
+#endif
     if (want < 0 || !filmsim_photo_mode() || want == curve_dr) return;
 #ifdef FS_OWN_CURVES
     curve_in_hook = 1;
@@ -4139,7 +4202,11 @@ static dng_meta_t pair_meta;
 
 static int pair_use_original(void)
 {
-    return conf.film_save_original_jpeg && conf.film_sim > 0 &&
+    int has_look = conf.film_sim > 0;
+#ifdef FILMSIM_EXLS
+    if (conf.film_exls) has_look = exls_strength() && exls_name();
+#endif
+    return conf.film_save_original_jpeg && has_look &&
            pair_phase < PAIR_METER && !dev_armed && !dev_active &&
            !dev_restore && !batch_on && filmsim_photo_mode() &&
            !camera_info.state.state_kbd_script_run && !usb_remote_active &&
@@ -4148,6 +4215,12 @@ static int pair_use_original(void)
 
 void filmsim_pair_prepare_capture(void)
 {
+#ifdef FILMSIM_EXLS
+    if (conf.film_exls && filmsim_photo_mode()) {
+        if (!canon_props_match(&sims[0])) set_canon_props(&sims[0]);
+        return;
+    }
+#endif
     if (conf.film_save_original_jpeg && conf.film_sim && filmsim_photo_mode()) {
         const filmsim_t *s = pair_use_original() ? &sims[0] : current();
         if (!canon_props_match(s))
@@ -4157,7 +4230,11 @@ void filmsim_pair_prepare_capture(void)
 
 const char *filmsim_pair_enum(int change, __attribute__((unused)) int arg)
 {
-    if (conf.film_sim <= 0)
+    if (conf.film_sim <= 0
+#ifdef FILMSIM_EXLS
+        && !conf.film_exls
+#endif
+    )
         return lang_str(LANG_EXCCD_NEEDS_LOOK);
     if (change && pair_phase == PAIR_IDLE) {
         conf.film_save_original_jpeg = !conf.film_save_original_jpeg;
@@ -4248,6 +4325,48 @@ void filmsim_pair_helper_raw(int loaded)
     remove(PAIR_RAW_FILE);
     pair_expect_file(get_target_file_num(), loaded ? PAIR_RENDER : PAIR_LOAD_FAILED);
 }
+
+#ifdef FILMSIM_EXLS
+void filmsim_exls_render(char *raw, int developing, int pair_helper)
+{
+    static const char *const status[] = {
+        [EXLS_BYPASS] = "exls_bypass", [EXLS_NO_LUT] = "exls_no_lut",
+        [EXLS_IO] = "exls_io", [EXLS_INVALID] = "exls_invalid", [EXLS_MEMORY] = "exls_memory"
+    };
+    shot_skip = 0;
+    filmsim_perf_mark(PERF_CURVE);
+    int wb[3] = {0, 0, 0}; // Canon property order is G, R, B.
+    if (developing && dev_active && dev_has_meta) {
+        wb[0] = dev_meta.wb_g;
+        wb[1] = dev_meta.wb_r;
+        wb[2] = dev_meta.wb_b;
+    } else {
+        get_property_case(camera_info.props.wb_adj, wb, sizeof(wb));
+    }
+    int gain[3] = {7092, 4096, 6738}; // Daylight fit fallback.
+    for (int c = 0; c < 3; c += 2) {
+        int v = wb[c ? 2 : 1];
+        if (v > 0 && v <= 32767 && wb[0] > 0 && wb[0] <= 32767) {
+            int q = (v * 4096 + wb[0] / 2) / wb[0];
+            if (q >= 2048 && q <= 16384) gain[c] = q;
+        }
+    }
+    exls_result result = filmsim_photo_mode() ? exls_render(raw, gain) : EXLS_BYPASS;
+    filmsim_perf_set_engine(result == EXLS_OK ? FILMSIM_ENGINE_EXLS : FILMSIM_ENGINE_CANON);
+    filmsim_perf_mark(PERF_NONE);
+    if (result != EXLS_OK && perf.active) perf.status = status[result];
+    const char *message = exls_message(result);
+    if (message) {
+        console_add_line(message);
+        if (pair_helper) pair_phase = PAIR_LOAD_FAILED;
+    }
+    if (developing) {
+        filmsim_perf_mark(PERF_WHITE_BALANCE);
+        filmsim_develop_end(message ? NULL : raw);
+        filmsim_perf_mark(PERF_NONE);
+    }
+}
+#endif
 
 void filmsim_pair_filewrite(const char *name)
 {
@@ -4350,7 +4469,7 @@ static void pair_tick(void)
     } else if (phase == PAIR_RENDER) {
         pair_finish(1);
     } else {
-        remove(pair_jpeg); // this is the helper's own exposure after a failed RAW read
+        remove(pair_jpeg); // discard the helper JPEG after a failed RAW load or EXLS render
         pair_finish(0);
     }
 }

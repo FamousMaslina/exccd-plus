@@ -34,6 +34,22 @@ gui_draw.thm.o: $(core)/gui_draw.c $(lfont)/font_8x16_uni_packed.h
 # Filmsim: als ARM-Code (schneller als THUMB fuer die Rohdaten-Schleifen)
 ifeq ($(PLATFORM),a620)
 OBJS+=exfilmsim.o exfilmsim_hq.o exfilmsim_11.o exfilmsim_hq_11.o
+ifeq ($(PLATFORMSUB),100f)
+CFLAGS+=-DFILMSIM_EXLS_BUILD
+OBJS+=exls.o exls_cube.o exls_lut.o
+
+exls.o: $(core)/exls.c $(core)/exls.h $(core)/exls_lut.h $(core)/filmsim.h
+	@echo $< '->' $@
+	$(CC) $(CFLAGS) -nostdinc -c -o $@ $<
+
+exls_cube.o: $(core)/exls_cube.c $(core)/exls_lut.h
+	@echo $< '->' $@
+	$(CC) $(CFLAGS) -nostdinc -c -o $@ $<
+
+exls_lut.o: $(core)/exls_lut.c $(core)/exls_lut.h $(core)/filmsim_raw.h
+	@echo $< '->' $@
+	$(CC) $(CFLAGS) -nostdinc -c -o $@ $<
+endif
 filmsim.o: $(core)/exfilmsim_state.c $(core)/filmsim.c $(core)/filmsim.h $(core)/filmsim_txt.h $(core)/filmsim_recipe.h $(core)/exfilmsim.h $(core)/exfilmsim_hq.h
 	@echo $< '->' $@
 	$(CC) $(CFLAGS) -nostdinc -c -o $@ $<

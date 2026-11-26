@@ -69,6 +69,10 @@ def main():
                os.path.join(ROOT, "core", "filmsim_recipe.c"),
                os.path.join(ROOT, "tools", "filmsim", "test_filmsim_host.c"),
                "-o", exe]
+        if (plat, sub) == ("a620", "100f"):
+            cmd.insert(1, "-DFILMSIM_EXLS_BUILD")
+            cmd[-2:-2] = [os.path.join(ROOT, "core", f) for f in
+                          ("exls.c", "exls_cube.c", "exls_lut.c")]
         if plat == "a620":
             cmd[-2:-2] = [os.path.join(ROOT, "core", f) for f in
                           ("exfilmsim.c", "exfilmsim_hq.c", "exfilmsim_11.c", "exfilmsim_hq_11.c")]
@@ -82,6 +86,8 @@ def main():
             scenarios.extend([("quick_buttons",), ("jpeg_pair",), ("exfs",), ("exfs_develop",), ("exfs_11_develop",),
                               ("exfs_hq_picker",), ("exfs_hq_render",), ("exfs_hq_texture",),
                               ("exfs_hq11_parity",)])
+        if (plat, sub) == ("a620", "100f"):
+            scenarios.append(("exls",))
         for scenario in scenarios:
             r = subprocess.run([exe, scenario[0], ROOT] + list(scenario[1:]), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                text=True, encoding="ascii", errors="replace", timeout=600)

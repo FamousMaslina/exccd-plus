@@ -2,7 +2,7 @@
 # EXCCD+
 <img width="900" height="300" alt="exccdplus" src="https://github.com/user-attachments/assets/167387f4-b2bd-4155-afc7-9e13be0f9175" />
 
-EXCCD+ v1.3.3 combines the original [CHDK](https://chdk.fandom.com/) menu and script loader
+EXCCD+ v1.4 combines the original [CHDK](https://chdk.fandom.com/) menu and script loader
 with the film looks from [EXCCD v1.10.2](https://github.com/35mmSebas/exccd). Each look
 combines Canon's *My Colors* settings with a tone curve applied before the camera creates the JPEG.
 
@@ -174,6 +174,11 @@ processed RAW with HQ 1.0 and HQ 1.1 for all four tested presets.
 
 ## What's new
 
+- **v1.4** Add **EXLS 1.0 (ExLUTShooting)** on the A620 (1.00f). Select
+  EXLS 1.0 alongside the existing engines and load a custom sRGB Cube under
+  **EXLS settings**. EXLS grades the RAW capture before Canon writes its
+  full-resolution JPEG and keeps the existing RAW/DNG and Save Original JPEG
+  options. Sample images coming soon.
 - **v1.3.3** Add an `engine` column to **Performance Metrics** and an optional
   **Show used engine OSD** at the bottom of the EXCCD+ menu.
 - **v1.3.2** Add **EXFS HQ 1.1.1** on the A620 with 40% less grain at the
@@ -296,7 +301,7 @@ Use Dynamic+2 for highlight protection in automatic exposure modes.
 
 Build for your camera model and firmware version. For the A620 1.00f, run
 `sh tools/filmsim/build.sh a620` from the repository with the [build tools](#camera-build-requirements)
-on your PATH. Extract the resulting build from `dist/v1.3.3/` to the root of the SD card.
+on your PATH. Extract the resulting build from `dist/v1.4/` to the root of the SD card.
 On the A620, start manually in playback with **MENU → Firm Update**. For
 autostart, use **EXCCD+ → System → Make Card Bootable...**, then lock the SD card and restart.
 
@@ -312,7 +317,14 @@ press the shutter fully in ALT to run it. `QUICKISO.LUA` is included in that fol
 
 To choose a look, enter ALT in still-photo mode and go to **MENU → EXCCD+ → Film selection...**.
 
-On the A620, **MENU → EXCCD+ → Save Original JPEG** is available with a film recipe selected.
+On the A620 (1.00f), **EXCCD+ → EXLS 1.0** uses a user-supplied 9³, 17³, 32³ or 33³
+`.cube` and grades the capture before Canon writes its JPEG. Copy a full-range
+sRGB Cube to `CHDK/LUTS`, then select it and set its intensity under
+**EXLS settings**. EXLS can
+save the original Canon JPEG and RAW/DNG alongside the grade. See
+[EXLS setup, colour pipeline and limitations](doc/exls.md).
+
+On the A620, **MENU → EXCCD+ → Save Original JPEG** is available with a film recipe or EXLS selected.
 In single-shot drive mode it saves the Canon render first, then automatically takes a helper shot
 to render the first exposure's sensor data with the recipe. Canon numbers the files in sequence,
 for example `IMG_8345.JPG` for the original and `IMG_8346.JPG` for the recipe JPEG.
@@ -320,7 +332,7 @@ The original uses the exposure and Canon white balance of that capture. Release 
 to let the helper shot start. With this setting off, the camera saves one JPEG.
 
 To profile a look, open **EXCCD+ → Performance Metrics** and select **On**.
-The selector is available with any EXCCD+ look or a saved recipe selected. Each capture appends
+The selector is available with any EXCCD+ look, a saved recipe or EXLS selected. Each capture appends
 one row to `CHDK/LOGS/PERF.CSV`. Filter the `mode` column for `single_photo` or
 `keep_original_jpeg`. Paired rows name both JPEGs and show the temporary RAW write and read,
 original JPEG processing, and wait for the helper capture.
