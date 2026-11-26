@@ -2,7 +2,7 @@
 # EXCCD+
 <img width="900" height="300" alt="exccdplus" src="https://github.com/user-attachments/assets/167387f4-b2bd-4155-afc7-9e13be0f9175" />
 
-EXCCD+ v1.3.2 combines the original [CHDK](https://chdk.fandom.com/) menu and script loader
+EXCCD+ v1.3.3 combines the original [CHDK](https://chdk.fandom.com/) menu and script loader
 with the film looks from [EXCCD v1.10.2](https://github.com/35mmSebas/exccd). Each look
 combines Canon's *My Colors* settings with a tone curve applied before the camera creates the JPEG.
 
@@ -174,6 +174,8 @@ processed RAW with HQ 1.0 and HQ 1.1 for all four tested presets.
 
 ## What's new
 
+- **v1.3.3** Add an `engine` column to **Performance Metrics** and an optional
+  **Show used engine OSD** at the bottom of the EXCCD+ menu.
 - **v1.3.2** Add **EXFS HQ 1.1.1** on the A620 with 40% less grain at the
   default **Amount**. The grain levels are relative to the new baseline.
   Find **EXFS HQ 1.1** under **Deprecated Engines**.
@@ -294,7 +296,7 @@ Use Dynamic+2 for highlight protection in automatic exposure modes.
 
 Build for your camera model and firmware version. For the A620 1.00f, run
 `sh tools/filmsim/build.sh a620` from the repository with the [build tools](#camera-build-requirements)
-on your PATH. Extract the resulting build from `dist/v1.3.2/` to the root of the SD card.
+on your PATH. Extract the resulting build from `dist/v1.3.3/` to the root of the SD card.
 On the A620, start manually in playback with **MENU → Firm Update**. For
 autostart, use **EXCCD+ → System → Make Card Bootable...**, then lock the SD card and restart.
 
@@ -322,6 +324,14 @@ The selector is available with any EXCCD+ look or a saved recipe selected. Each 
 one row to `CHDK/LOGS/PERF.CSV`. Filter the `mode` column for `single_photo` or
 `keep_original_jpeg`. Paired rows name both JPEGs and show the temporary RAW write and read,
 original JPEG processing, and wait for the helper capture.
+
+The `engine` column names the engine that rendered the recipe JPEG. An HQ
+selection can use standard EXFS for an incompatible look. The column is blank
+if rendering never starts. On the first write after updating, an older CSV is
+saved as `PERF0001.CSV` or the next available numbered file.
+
+Enable **Show used engine OSD** at the bottom of the **EXCCD+** menu to see
+the selected engine on the shooting screen. The setting defaults to Off.
 
 The `_ms` columns report elapsed milliseconds. A blank means the stage was unused or timing
 was unavailable. A zero means the timer did not advance during that stage. On the A620,

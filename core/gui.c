@@ -2589,6 +2589,7 @@ static CMenuItem exccd_menu_items[] = {
     MENU_ITEM   (0x5c,(int)"RAW",                           MENUITEM_SUBMENU,   &exccd_raw_menu, 0 ),
     MENU_ITEM   (0x2b,LANG_EXCCD_RESET,                     MENUITEM_PROC,      gui_filmsim_reset, 0 ),
     MENU_ITEM   (0x29,LANG_EXCCD_SYSTEM,                   MENUITEM_SUBMENU,   &system_submenu, 0 ),
+    MENU_ITEM   (0x5f,LANG_EXCCD_SHOW_ENGINE_OSD,          MENUITEM_BOOL,      &conf.film_show_engine_osd, 0 ),
     MENU_ITEM   (0x51,LANG_MENU_BACK,                       MENUITEM_UP,        0, 0 ),
     {0}
 };

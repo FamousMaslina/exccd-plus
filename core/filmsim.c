@@ -418,6 +418,27 @@ const char* filmsim_name(void)
     return sim_name(i);
 }
 
+static const char *const engine_names[] = {
+    [FILMSIM_ENGINE_EXCCD] = "EXCCD",
+    [FILMSIM_ENGINE_EXFS_10] = "EXFS 1.0",
+    [FILMSIM_ENGINE_EXFS_11] = "EXFS 1.1",
+    [FILMSIM_ENGINE_HQ_10] = "EXFS HQ 1.0",
+    [FILMSIM_ENGINE_HQ_11] = "EXFS HQ 1.1",
+    [FILMSIM_ENGINE_HQ_111] = "EXFS HQ 1.1.1",
+};
+
+filmsim_engine filmsim_selected_engine(void)
+{
+#ifdef FILMSIM_EXFS
+    if (conf.film_exfs_hq_111) return FILMSIM_ENGINE_HQ_111;
+    if (conf.film_exfs_hq_11) return FILMSIM_ENGINE_HQ_11;
+    if (conf.film_exfs_11) return FILMSIM_ENGINE_EXFS_11;
+    if (conf.film_exfs_hq) return FILMSIM_ENGINE_HQ_10;
+    if (conf.film_exfs) return FILMSIM_ENGINE_EXFS_10;
+#endif
+    return FILMSIM_ENGINE_EXCCD;
+}
+
 // Schwarzweiss im Sinne des Farbfilters: S/W-Filme und Tintype (Sepia, auch einfarbig)
 static int bw_look(const filmsim_t *s)
 {
@@ -1635,6 +1656,7 @@ void filmsim_draw_osd(void)
 {
     static char buf[160];
     static int was_pending = 0;
+    static const char *last_engine;
     // Modus gewechselt -> alten Filmnamen einmal wegwischen
     static int was_photo = -1;
     int is_photo = filmsim_photo_mode();
@@ -1643,6 +1665,16 @@ void filmsim_draw_osd(void)
     if (!is_photo) return;
     // Halbdruck (Canon zeigt unten Zeit/Blende), MENU, FUNC.SET -> ausblenden
     if (filmsim_osd_hidden()) return;
+    const char *engine = conf.film_show_engine_osd ? engine_names[filmsim_selected_engine()] : NULL;
+    if (last_engine && last_engine != engine)
+        gui_set_need_restore();
+    last_engine = engine;
+    if (engine) {
+        int len = strlen(engine);
+        int x = (camera_screen.width - len * FONT_WIDTH) / 2;
+        int y = camera_screen.height - 2 * FONT_HEIGHT - 4;
+        draw_string(x < 0 ? 0 : x, y, engine, user_color(conf.osd_color));
+    }
     if (was_pending && !preview_pending)
         gui_set_need_restore();      // laengeren Hinweis einmal wegwischen
     was_pending = preview_pending;
@@ -1957,6 +1989,7 @@ static struct {
     int ms[PERF_STAGE_COUNT];
     int number, slot;
     char custom[48], original[48], look[24];
+    const char *engine;
     const char *status;
     int wait_for_pair;
 } perf;
@@ -1996,26 +2029,63 @@ const char *filmsim_perf_enum(int change, __attribute__((unused)) int arg)
     return lang_str(conf.film_performance_metrics ? LANG_EXCCD_ON : LANG_EXCCD_OFF);
 }
 
-static void perf_write(const char *status)
+static int perf_open(void)
 {
-    static const char *const modes[] = { "single_photo", "keep_original_jpeg", "raw_develop" };
     static const char header[] =
         "mode;status;custom_jpeg;original_jpeg;look;recipe_slot;raw_to_output_ms;"
         "raw_spool_ms;raw_output_ms;original_jpeg_ms;helper_wait_ms;raw_load_ms;"
         "develop_setup_ms;bad_pixels_ms;hot_pixels_ms;double_exposure_ms;color_nr_ms;"
         "tone_curve_ms;channel_mix_ms;glow_tone_ms;grain_ms;frame_ms;date_stamp_ms;"
-        "white_balance_ms;film_log_ms;custom_jpeg_ms\r\n";
+        "white_balance_ms;film_log_ms;custom_jpeg_ms;engine\r\n";
+
+    int fd = open(PERF_CSV, O_RDWR | O_CREAT, 0777);
+    if (fd < 0)
+        return -1;
+
+    char existing[sizeof(header) - 1];
+    int size = read(fd, existing, sizeof(existing));
+    if (size == sizeof(existing) && memcmp(existing, header, sizeof(existing)) == 0) {
+        if (lseek(fd, 0, SEEK_END) >= 0)
+            return fd;
+        close(fd);
+        return -1;
+    }
+    if (size != 0) {
+        // Preserve older logs with their original column layout.
+        close(fd);
+        if (size < 0)
+            return -1;
+        char archive[] = "A/CHDK/LOGS/PERF0001.CSV";
+        struct stat st;
+        int number;
+        for (number = 1; number <= 9999; number++) {
+            sprintf(archive, "A/CHDK/LOGS/PERF%04d.CSV", number);
+            if (stat(archive, &st) != 0)
+                break;
+        }
+        if (number > 9999 || rename(PERF_CSV, archive) != 0)
+            return -1;
+        fd = open(PERF_CSV, O_RDWR | O_CREAT, 0777);
+        if (fd < 0)
+            return -1;
+    }
+    if (write(fd, header, sizeof(header) - 1) == sizeof(header) - 1)
+        return fd;
+    close(fd);
+    return -1;
+}
+
+static void perf_write(const char *status)
+{
+    static const char *const modes[] = { "single_photo", "keep_original_jpeg", "raw_develop" };
 
     perf.active = 0;
 #ifdef FILMSIM_JPEG_PAIR
     perf_jpeg_number = 0;
 #endif
-    int fd = open(PERF_CSV, O_WRONLY | O_CREAT, 0777);
-    if (fd < 0)
-        return;
-    int end = lseek(fd, 0, SEEK_END);
-    if (end >= 0 && (end || write(fd, header, sizeof(header) - 1) == sizeof(header) - 1)) {
-        char line[400];
+    int fd = perf_open();
+    if (fd >= 0) {
+        char line[432];
         char *p = line + sprintf(line, "%s;%s;%s;%s;\"", modes[perf.mode], status,
                                  perf.custom, perf.original);
         for (const char *c = perf.look; *c; c++) {
@@ -2030,11 +2100,10 @@ static void perf_write(const char *status)
             *p++ = ';';
             if (perf.ms[i] >= 0) p += sprintf(p, "%d", perf.ms[i]);
         }
-        *p++ = '\r';
-        *p++ = '\n';
+        p += sprintf(p, ";%s\r\n", perf.engine ? perf.engine : "");
         write(fd, line, p - line);
+        close(fd);
     }
-    close(fd);
 }
 
 #ifdef FILMSIM_JPEG_PAIR
@@ -2086,6 +2155,12 @@ void filmsim_perf_begin(filmsim_perf_mode mode)
     sprintf(perf.look, "%.23s", filmsim_name());
     perf.number = shot_path(mode == FILMSIM_PERF_PAIR ? perf.original : perf.custom);
     perf.start_tick = get_tick_count();
+}
+
+void filmsim_perf_set_engine(filmsim_engine engine)
+{
+    if (perf.active)
+        perf.engine = engine_names[engine];
 }
 
 void filmsim_perf_mark(filmsim_perf_stage stage)
@@ -3440,6 +3515,7 @@ void filmsim_reset_settings(void)
     conf.film_recipe = 0;
     conf.film_save_original_jpeg = 0;
     conf.film_performance_metrics = 0;
+    conf.film_show_engine_osd = 0;
     set_curve(current());               // ohne Dynamik+ und WB-Verschiebung
 }
 

@@ -17,6 +17,10 @@
 - `EXFS` without `HQ`, or `STD` / `std` on its own, means standard EXFS.
 - `HQ` or `EXFS HQ` means the high-quality ExFilmSim engine.
 - Refer to the original engine as `EXCCD` or `standard EXCCD`.
+- When adding or changing an engine, update the engine names and selection in
+  `core/filmsim.c` and the performance CSV engine reporting at the render
+  dispatch. Verify that `CHDK/LOGS/PERF.CSV` identifies the engine that ran,
+  including any fallback, and that the engine OSD shows the selected engine.
 - Preserve EXFS 1.0 when changing EXFS 1.1. With the same RAW input, recipe,
   settings, and Grain seed, both engines must produce byte-identical processed
   RAW. Finish camera testing by comparing the processed RAW and final JPEG for
@@ -31,7 +35,7 @@ Power on the A620 with the SD card inserted and CHDK running, then connect a USB
 - Get Tudi's explicit green light before modifying the SD card. Include the files or settings and the purpose in the request. This applies to writes over USB and through a card reader, including test captures, staging files, firmware changes, and enabling autoboot. Keep each action within the scope of the approval.
 - Before changing a boot file, download the current `DISKBOOT.BIN`, `PS.FIR`, and any modules being replaced. Record their SHA-256 hashes and confirm that a card reader is available for recovery if CHDK USB stops responding.
 - Prefer the Windows card reader for A620 boot-file changes. Two USB file switches passed readback and then lost the `DISKBOOT.BIN` directory entry after a CHDK restart. When Tudi requests a USB install, use CHDK's soft `shut_down()` from playback after verifying both files, then check autoboot after a physical power-on. That sequence preserved the boot file in testing. Use the restart command once the boot file is already verified after a cold boot.
-- Stage the candidate under a separate name and verify its SHA-256. Keep the current boot file intact under a rollback name when switching to the verified candidate. Verify the installed boot file by readback, then safely eject the SD card. If CHDK fails to load, stop the deployment and get approval for the recovery step.
+- Stage the candidate under a separate name and verify its SHA-256. Keep the current boot file intact under a rollback name when switching to the verified candidate. Verify the installed boot file by readback. Agents must never eject, unmount, or request safe removal of the SD card or its reader. Leave it mounted for Tudi to handle. If CHDK fails to load, stop the deployment and get approval for the recovery step.
 - At the end of the approved installation, confirm the A620 card is FAT16 with the `BOOTDISK` marker and the physical SD lock engaged. Power the camera fully off and on in playback, then verify that CHDK starts automatically and answers the CHDK PTP version command over USB.
 
 Always take test photos with the flash off. In record mode, set property 16 to 2. Half-press the shutter and check that `get_flash_mode() == 2` and `get_prop(79) == 0` before pressing the shutter fully. Release the half-press and abort the shot if either check fails.

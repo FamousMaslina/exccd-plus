@@ -6,7 +6,7 @@
 // RAW-Tonkurven (curves.flt) zu waehlbaren Looks.
 
 #define FILMSIM_PRODUCT_NAME "EXCCD+"
-#define FILMSIM_VERSION "v1.3.2"
+#define FILMSIM_VERSION "v1.3.3"
 
 extern const char* filmsim_menu_enum(int change, int arg);
 extern const char* filmsim_name(void);
@@ -52,6 +52,17 @@ enum { PS_LOAD, PS_HOT, PS_DOUBLE, PS_CNR, PS_CURVE, PS_MIX, PS_GLOW, PS_GRAIN, 
 extern void filmsim_prog_step(int step);
 
 typedef enum {
+    FILMSIM_ENGINE_EXCCD,
+    FILMSIM_ENGINE_EXFS_10,
+    FILMSIM_ENGINE_EXFS_11,
+    FILMSIM_ENGINE_HQ_10,
+    FILMSIM_ENGINE_HQ_11,
+    FILMSIM_ENGINE_HQ_111
+} filmsim_engine;
+
+extern filmsim_engine filmsim_selected_engine(void);
+
+typedef enum {
     FILMSIM_PERF_SINGLE, FILMSIM_PERF_PAIR, FILMSIM_PERF_DEVELOP
 } filmsim_perf_mode;
 
@@ -66,6 +77,7 @@ typedef enum {
 
 extern const char *filmsim_perf_enum(int change, int arg);
 extern void filmsim_perf_begin(filmsim_perf_mode mode);
+extern void filmsim_perf_set_engine(filmsim_engine engine);
 extern void filmsim_perf_mark(filmsim_perf_stage stage);
 extern void filmsim_perf_raw_done(int original);
 #ifdef FILMSIM_EXFS

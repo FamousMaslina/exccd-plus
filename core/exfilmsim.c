@@ -110,13 +110,18 @@ int exfs_hq_11_selected(void)
 
 int exfs_render_selected(char *raw, int developing, int pair_helper)
 {
+    filmsim_engine engine = filmsim_selected_engine();
+    if (engine == FILMSIM_ENGINE_EXCCD)
+        return 0;
+
     const exfs_hq_profile *profile = exfs_hq_active_profile();
-    if (conf.film_exfs_11 || exfs_hq_11_selected()) {
+    if (engine == FILMSIM_ENGINE_EXFS_11
+        || engine == FILMSIM_ENGINE_HQ_11 || engine == FILMSIM_ENGINE_HQ_111) {
+        filmsim_perf_set_engine(profile ? engine : FILMSIM_ENGINE_EXFS_11);
         exfs11_render(raw, developing, pair_helper, profile);
         return 1;
     }
-    if (!conf.film_exfs && !conf.film_exfs_hq)
-        return 0;
+    filmsim_perf_set_engine(profile ? engine : FILMSIM_ENGINE_EXFS_10);
     if (profile)
         exfs_hq_render(raw, developing, pair_helper, profile);
     else

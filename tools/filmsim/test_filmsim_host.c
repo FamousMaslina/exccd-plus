@@ -151,6 +151,14 @@ int remove(const char *n)
     if (i >= 0) card[i].data = 0;
     return 0;
 }
+int rename(const char *from, const char *to)
+{
+    int i = fs_find(from);
+    if (i < 0 || fs_find(to) >= 0)
+        return -1;
+    strcpy(card[i].name, to);
+    return 0;
+}
 
 // --- Propcases, Bildschirm, Tasten -----------------------------------------
 static short props[512];
@@ -1539,9 +1547,19 @@ static void scenario_exfs_hq_render(void)
     conf.film_exfs_hq = 1;
     conf.gold200_grain_amount = 0;
     memcpy(rawbuf, input, size);
+    conf.film_performance_metrics = 1;
+    filmsim_perf_begin(FILMSIM_PERF_SINGLE);
     shoot((char *)rawbuf);
+    filmsim_tick();
+    CHECK(strstr(card_text("A/CHDK/LOGS/PERF.CSV"), ";EXFS 1.0\r\n"),
+          "Performance metrics must record the actual EXFS fallback");
     CHECK(!exfs_hq_active_profile() && memcmp(reference, rawbuf, size) == 0,
           "Unsupported looks should retain the EXFS render including legacy grain");
+    CHECK(!strstr(osd_text(), "EXFS HQ 1.0\n"), "Engine OSD should be off by default");
+    conf.film_show_engine_osd = 1;
+    CHECK(strstr(osd_text(), "EXFS HQ 1.0\n"), "Engine OSD must show the selected HQ engine");
+    conf.film_show_engine_osd = 0;
+    CHECK(!strstr(osd_text(), "EXFS HQ 1.0\n"), "Engine OSD should hide when disabled");
     film_by_name("Kodak Gold 200");
     CHECK(exfs_hq_active_profile() && !conf.film_exfs, "Returning to Gold should reactivate HQ");
 
@@ -1935,6 +1953,7 @@ static void scenario_aiso(void)
 static void scenario_jpeg_pair(void)
 {
     static const char perf_csv[] = "A/CHDK/LOGS/PERF.CSV";
+    static const char legacy_csv[] = "mode;status\r\nsingle_photo;ok\r\n";
     static const char single[] = "A/DCIM/100CANON/IMG_8344.JPG";
     static const char original[] = "A/DCIM/100CANON/IMG_8345.JPG";
     static const char helper[] = "A/DCIM/100CANON/IMG_8346.JPG";
@@ -1969,13 +1988,18 @@ static void scenario_jpeg_pair(void)
     filmsim_pair_file_closed();
     filmsim_tick();
     CHECK(fs_find(perf_csv) < 0, "Unrelated JPEG close completed the measurement");
+    fs_put(perf_csv, legacy_csv, sizeof(legacy_csv) - 1);
+    filmsim_perf_set_engine(FILMSIM_ENGINE_EXCCD);
     now_ms += 50;
     filmsim_pair_filewrite(single);
     filmsim_pair_file_closed();
     filmsim_tick();
     CHECK(strstr(card_text(perf_csv),
-                 "single_photo;ok;100CANON/IMG_8344.JPG;;\"Chrome 64\";;150;;;;;;;;;;;100;;;;;;;;50\r\n"),
+                 "single_photo;ok;100CANON/IMG_8344.JPG;;\"Chrome 64\";;150;;;;;;;;;;;100;;;;;;;;50;EXCCD\r\n"),
           "Single capture metrics do not match:\n%s", card_text(perf_csv));
+    CHECK(strstr(card_text(perf_csv), ";custom_jpeg_ms;engine\r\n") &&
+          strcmp(card_text("A/CHDK/LOGS/PERF0001.CSV"), legacy_csv) == 0,
+          "Legacy performance CSV was not preserved with its original schema");
 
     filmsim_pair_enum(1, 0);
     CHECK(shooting_get_prop(PROPCASE_MY_COLORS) == MC_OFF, "Original must use Canon colours");
@@ -2009,6 +2033,7 @@ static void scenario_jpeg_pair(void)
     now_ms += 60;
     filmsim_perf_mark(PERF_NONE);
     filmsim_pair_helper_raw(1);
+    filmsim_perf_set_engine(FILMSIM_ENGINE_HQ_111);
     filmsim_perf_mark(PERF_COLOR_NR);
     now_ms += 80;
     filmsim_perf_raw_done(0);
@@ -2029,7 +2054,7 @@ static void scenario_jpeg_pair(void)
           "Completing a pair must preserve both JPEG files");
     CHECK(shooting_get_prop(PROPCASE_FLASH_MODE) == 1, "Original flash setting was not restored");
     CHECK(strstr(card_text(perf_csv),
-                 "keep_original_jpeg;ok;100CANON/IMG_8346.JPG;100CANON/IMG_8345.JPG;\"Chrome 64\";;580;0;;90;210;60;;;;;80;;;;;;;;;140\r\n"),
+                 "keep_original_jpeg;ok;100CANON/IMG_8346.JPG;100CANON/IMG_8345.JPG;\"Chrome 64\";;580;0;;90;210;60;;;;;80;;;;;;;;;140;EXFS HQ 1.1.1\r\n"),
           "Pair metrics do not match:\n%s", card_text(perf_csv));
     const char *header_end = strstr(card_text(perf_csv), "\r\n");
     CHECK(header_end && !strstr(header_end + 2, "mode;status;"),

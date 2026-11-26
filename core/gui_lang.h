@@ -946,8 +946,9 @@
 #define LANG_EXCCD_EXFS_HQ_11                   813
 #define LANG_EXCCD_EXFS_HQ_111                  814
 #define LANG_EXCCD_DEPRECATED_ENGINES           815
+#define LANG_EXCCD_SHOW_ENGINE_OSD              816
 
-#define GUI_LANG_ITEMS                          815
+#define GUI_LANG_ITEMS                          816
 
 //-------------------------------------------------------------------
 extern void gui_lang_init();

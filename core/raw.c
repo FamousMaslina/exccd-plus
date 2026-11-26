@@ -357,6 +357,8 @@ void raw_process(void)
     if (!exfs_render_selected(rawadr, developing, pair_helper))
 #endif
     {
+    filmsim_perf_set_engine(FILMSIM_ENGINE_EXCCD);
+
     // Filmsim: Fortschrittsbalken der normalen Aufnahme planen (Entwickeln hat ihn schon)
     if (!developing)
         filmsim_shot_prepare();

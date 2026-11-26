@@ -573,6 +573,7 @@ static ConfInfo conf_info[] = {
     CONF_INFO(284, conf.film_exfs_11,                           CONF_DEF_VALUE, i:0),
     CONF_INFO(285, conf.film_exfs_hq_11,                        CONF_DEF_VALUE, i:0),
     CONF_INFO(286, conf.film_exfs_hq_111,                       CONF_DEF_VALUE, i:0),
+    CONF_INFO(287, conf.film_show_engine_osd,                   CONF_DEF_VALUE, i:0),
 
     CONF_INFO(999, conf.script_allow_lua_native_calls,          CONF_DEF_VALUE, i:0),
 

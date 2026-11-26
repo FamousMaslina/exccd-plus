@@ -500,6 +500,7 @@ typedef struct
     int film_exfs_11;
     int film_exfs_hq_11;
     int film_exfs_hq_111;
+    int film_show_engine_osd;
 
 } Conf;
 
