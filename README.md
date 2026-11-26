@@ -10,6 +10,9 @@ The Canon PowerShot A620 with firmware 1.00f is the primary EXCCD+ target. Other
 ports come from upstream EXCCD or this. See the [build target list](tools/filmsim/cameras.txt)
 for model IDs and firmware versions. The table reports upstream camera testing for those ports.
 
+The A620 offers [EXLS](#exlutshooting-exls), [EXFS](#exfilmsim-exfs), and
+[EXFS HQ](#exfilmsim-high-quality-exfs-hq) as selectable rendering engines.
+
 If you'd like to test EXCCD+ on your camera, you're welcome to
 [open an issue](https://github.com/FamousMaslina/exccd-plus/issues/new) with your camera model,
 firmware version, and any test results.
@@ -61,6 +64,8 @@ firmware version, and any test results.
 </table>
 
 
+
+
 ## ExFilmSim (EXFS)
 
 On the PowerShot A620, the **EXCCD+** menu offers **EXFS 1.0**, **EXFS 1.1**,
@@ -104,6 +109,30 @@ EXFS 1.0 and EXFS 1.1 produced byte-identical processed RAW when the camera
 reprocessed the same saved exposure with Grain off for Chrome 64, Sony-CFL,
 Reggie Porta, and Kodak Gold 200. Gold 200 also matched with Medium grain and
 a fixed seed. Canon JPEG bytes varied across repeat captures.
+
+## ExLUTShooting (EXLS)
+
+**EXLS 1.0** applies custom 3D colour LUTs in-camera on the **Canon PowerShot A620 (1.00f)**.
+It uses the shot’s white balance and a colour model fitted to the A620 to apply
+the LUT to the Bayer RAW before Canon finishes the JPEG. Select **L** in the
+Canon menu for a 3072 × 2304 JPEG.
+
+### Shoot with EXLS
+
+1. Copy a full-range SDR sRGB `.cube` file to `CHDK/LUTS` on the SD card.
+   EXLS accepts 9³, 17³, 32³ and 33³ tables. Start with 17³ for lower memory use.
+2. Go to **CHDK → EXCCD+ → EXLS settings → Select Cube** and select the file.
+   Set **LUT intensity** from 0% to 100%. The camera remembers the selection
+   and intensity.
+3. Return to **EXCCD+** and enable **EXLS 1.0**. Only one custom engine can
+   be active at a time. Turn them all off to return to standard EXCCD.
+
+**Save Original JPEG** can keep the neutral Canon JPEG alongside the graded
+one. RAW/DNG saving keeps the original sensor data. **Performance Metrics**
+records the engine used, and **Show used engine OSD** displays the selected
+engine on the shooting screen.
+
+Sample images coming soon. [EXLS setup, colour pipeline and limitations](doc/exls.md).
 
 ### ExFilmSim High Quality (EXFS HQ)
 
@@ -317,12 +346,7 @@ press the shutter fully in ALT to run it. `QUICKISO.LUA` is included in that fol
 
 To choose a look, enter ALT in still-photo mode and go to **MENU → EXCCD+ → Film selection...**.
 
-On the A620 (1.00f), **EXCCD+ → EXLS 1.0** uses a user-supplied 9³, 17³, 32³ or 33³
-`.cube` and grades the capture before Canon writes its JPEG. Copy a full-range
-sRGB Cube to `CHDK/LUTS`, then select it and set its intensity under
-**EXLS settings**. EXLS can
-save the original Canon JPEG and RAW/DNG alongside the grade. See
-[EXLS setup, colour pipeline and limitations](doc/exls.md).
+For custom LUTs on the A620 (1.00f), see [ExLUTShooting (EXLS)](#exlutshooting-exls).
 
 On the A620, **MENU → EXCCD+ → Save Original JPEG** is available with a film recipe or EXLS selected.
 In single-shot drive mode it saves the Canon render first, then automatically takes a helper shot
