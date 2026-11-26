@@ -2,7 +2,7 @@
 # EXCCD+
 <img width="900" height="300" alt="exccdplus" src="https://github.com/user-attachments/assets/167387f4-b2bd-4155-afc7-9e13be0f9175" />
 
-EXCCD+ +V0.0.1 (firmware build v1.3.2) combines the original [CHDK](https://chdk.fandom.com/) menu and script loader
+EXCCD+ v1.3.2 combines the original [CHDK](https://chdk.fandom.com/) menu and script loader
 with the film looks from [EXCCD v1.10.2](https://github.com/35mmSebas/exccd). Each look
 combines Canon's *My Colors* settings with a tone curve applied before the camera creates the JPEG.
 
@@ -174,7 +174,7 @@ processed RAW with HQ 1.0 and HQ 1.1 for all four tested presets.
 
 ## What's new
 
-- **+V0.0.1** Add **EXFS HQ 1.1.1** on the A620 with 40% less grain at the
+- **v1.3.2** Add **EXFS HQ 1.1.1** on the A620 with 40% less grain at the
   default **Amount**. The grain levels are relative to the new baseline.
   Find **EXFS HQ 1.1** under **Deprecated Engines**.
 - **v1.3.1** Start every look with **Grain Off** when selected from the film
